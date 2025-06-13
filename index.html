@@ -147,102 +147,142 @@
             }
         `;
 
-        // Fragment shader migliorato per ombra più precisa
-        const fragmentShaderSource = `
-            precision mediump float;
+        // Fragment shader con ombra completa dello gnomone
+const fragmentShaderSource = `
+    precision mediump float;
+    
+    varying vec3 v_position;
+    varying vec3 v_normal;
+    varying vec2 v_texCoord;
+    varying vec3 v_lightDirection;
+    varying vec3 v_worldPos;
+    
+    uniform vec3 u_color;
+    uniform float u_isGround;
+    uniform float u_isGnomon;
+    uniform float u_isHourLine;
+    uniform vec3 u_lightDirection;
+    uniform vec3 u_gnomonPosition;
+    
+    // Funzione per calcolare se un punto è nell'ombra dello gnomone
+    float calculateGnomonShadow(vec3 worldPos, vec3 lightDir, vec3 gnomonBase) {
+        if (lightDir.y >= 0.0) return 1.0; // Sole sotto l'orizzonte
+        
+        // Dimensioni dello gnomone
+        float gnomonHeight = 2.0;
+        float gnomonWidth = 0.05;
+        
+        vec3 gnomonTop = gnomonBase + vec3(0.0, gnomonHeight, 0.0);
+        
+        // Normalizza la direzione della luce
+        vec3 normalizedLightDir = normalize(lightDir);
+        
+        float shadowIntensity = 1.0;
+        
+        // Controlla l'ombra per diversi punti lungo lo gnomone
+        for (float t = 0.0; t <= 1.0; t += 0.99) {
+            vec3 gnomonPoint = mix(gnomonBase, gnomonTop, t);
             
-            varying vec3 v_position;
-            varying vec3 v_normal;
-            varying vec2 v_texCoord;
-            varying vec3 v_lightDirection;
-            varying vec3 v_worldPos;
-            
-            uniform vec3 u_color;
-            uniform float u_isGround;
-            uniform float u_isGnomon;
-            uniform float u_isHourLine;
-            uniform vec3 u_lightDirection;
-            uniform vec3 u_gnomonPosition;
-            
-            void main() {
-                vec3 color = u_color;
-                
-                vec3 lightDir = normalize(-u_lightDirection);
-                float light = max(0.4, dot(v_normal, lightDir));
-                
-                if (u_isGround > 0.5) {
-                    // Effetto erba più realistico
-                    float noise1 = sin(v_worldPos.x * 12.0) * sin(v_worldPos.z * 12.0);
-                    float noise2 = sin(v_worldPos.x * 20.0 + v_worldPos.z * 20.0);
-                    float grass = (noise1 + noise2 * 0.3) * 0.1 + 0.9;
+            // Per ogni punto dello gnomone, controlla i 4 angoli della sezione rettangolare
+            for (float i = -1.0; i <= 1.0; i += 2.0) {
+                for (float j = -1.0; j <= 1.0; j += 2.0) {
+                    vec3 cornerPoint = gnomonPoint + vec3(i * gnomonWidth, 0.0, j * gnomonWidth);
                     
-                    vec3 grassColor1 = vec3(0.2, 0.6, 0.2);
-                    vec3 grassColor2 = vec3(0.3, 0.7, 0.3);
-                    color = mix(grassColor1, grassColor2, grass);
-                    
-                    // Calcolo ombra dello gnomone più preciso
-                    vec3 sunToGround = u_lightDirection;
-                    
-                    if (sunToGround.y < -0.01) {
-                        vec3 gnomonBase = u_gnomonPosition;
-                        vec3 gnomonTop = gnomonBase + vec3(0.0, 2.0, 0.0);
+                    // Calcola dove questo punto proietta l'ombra sul terreno
+                    float rayParam = -cornerPoint.y / normalizedLightDir.y;
+                    if (rayParam > 0.0) {
+                        vec3 shadowPoint = cornerPoint + normalizedLightDir * rayParam;
                         
-                        // Calcola dove l'ombra della cima colpisce il terreno
-                        float t = -gnomonTop.y / sunToGround.y;
-                        vec3 shadowPoint = gnomonTop + sunToGround * t;
+                        // Distanza dal punto corrente all'ombra proiettata
+                        float distToShadow = length(worldPos.xz - shadowPoint.xz);
                         
-                        // Distanza dal punto d'ombra
-                        float distFromShadow = length(v_worldPos.xz - shadowPoint.xz);
-                        
-                        // Ombra della linea dello gnomone
-                        vec3 gnomonDir = normalize(gnomonTop - gnomonBase);
-                        vec3 toPoint = v_worldPos - gnomonBase;
-                        
-                        // Proiezione del punto sulla linea dello gnomone
-                        float projLength = dot(toPoint, gnomonDir);
-                        vec3 closestPoint = gnomonBase + gnomonDir * clamp(projLength, 0.0, 2.0);
-                        
-                        // Calcola l'ombra di questo punto
-                        t = -closestPoint.y / sunToGround.y;
-                        vec3 lineShadePoint = closestPoint + sunToGround * t;
-                        float distFromLineShade = length(v_worldPos.xz - lineShadePoint.xz);
-                        
-                        // Applica l'ombra
-                        float shadowIntensity = 1.0;
-                        if (distFromShadow < 0.15) {
-                            shadowIntensity = 0.3 + 0.4 * smoothstep(0.0, 0.15, distFromShadow);
-                        } else if (distFromLineShade < 0.08) {
-                            shadowIntensity = 0.4 + 0.3 * smoothstep(0.0, 0.08, distFromLineShade);
+                        // Applica ombra graduale
+                        if (distToShadow < 0.2) {
+                            float localShadow = 0.7 + 0.9 * smoothstep(0.0, 0.2, distToShadow);
+                            shadowIntensity = min(shadowIntensity, localShadow);
                         }
-                        
-                        color = color * shadowIntensity;
                     }
                 }
-                
-                if (u_isGnomon > 0.5) {
-                    // Materiale bronzo per lo gnomone
-                    float metallic = sin(v_position.y * 25.0) * 0.1 + 0.9;
-                    color = vec3(0.8, 0.6, 0.2) * metallic;
-                    
-                    float selfShadow = dot(v_normal, lightDir);
-                    if (selfShadow < 0.4) {
-                        float shadowFactor = smoothstep(0.0, 0.4, selfShadow);
-                        color = mix(color * 0.2, color, shadowFactor);
-                    }
-                }
-                
-                if (u_isHourLine > 0.5) {
-                    // Linee orarie in pietra chiara
-                    color = vec3(0.9, 0.9, 0.8);
-                }
-                
-                // Illuminazione finale
-                vec3 ambient = vec3(0.3, 0.35, 0.4);
-                color = color * light + color * ambient * 0.2;
-                
-                gl_FragColor = vec4(color, 1.0);
             }
-        `;
+        }
+        
+        // Ombra aggiuntiva per il corpo principale dello gnomone
+        // Proietta l'intera forma rettangolare
+        vec3 gnomonCenter = gnomonBase + vec3(0.0, gnomonHeight * 0.5, 0.0);
+        float centerRayParam = -gnomonCenter.y / normalizedLightDir.y;
+        
+        if (centerRayParam > 0.0) {
+            vec3 centerShadowPoint = gnomonCenter + normalizedLightDir * centerRayParam;
+            
+            // Calcola l'orientamento dell'ombra basato sulla direzione della luce
+            vec3 lightDirXZ = normalize(vec3(normalizedLightDir.x, 0.0, normalizedLightDir.z));
+            vec3 perpDir = vec3(-lightDirXZ.z, 0.0, lightDirXZ.x);
+            
+            // Proietta la forma rettangolare dello gnomone
+            vec3 toPoint = worldPos - centerShadowPoint;
+            float alongLight = dot(toPoint.xz, lightDirXZ.xz);
+            float perpToLight = dot(toPoint.xz, perpDir.xz);
+            
+            // Dimensioni dell'ombra proiettata (scalate dall'angolo della luce)
+            float shadowLength = gnomonHeight / abs(normalizedLightDir.y);
+            float shadowWidth = gnomonWidth * 2.0;
+            
+            if (alongLight > 0.0 && alongLight < shadowLength && abs(perpToLight) < shadowWidth) {
+                float edgeFadeAlong = smoothstep(shadowLength * 0.8, shadowLength, abs(alongLight));
+                float edgeFadePerp = smoothstep(shadowWidth * 0.6, shadowWidth, abs(perpToLight));
+                float coreShadow = 0.15 + 0.4 * max(edgeFadeAlong, edgeFadePerp);
+                shadowIntensity = min(shadowIntensity, coreShadow);
+            }
+        }
+        
+        return shadowIntensity;
+    }
+    
+    void main() {
+        vec3 color = u_color;
+        
+        vec3 lightDir = normalize(-u_lightDirection);
+        float light = max(0.4, dot(v_normal, lightDir));
+        
+        if (u_isGround > 0.5) {
+            // Effetto erba più realistico
+            float noise1 = sin(v_worldPos.x * 12.0) * sin(v_worldPos.z * 12.0);
+            float noise2 = sin(v_worldPos.x * 20.0 + v_worldPos.z * 20.0);
+            float grass = (noise1 + noise2 * 0.3) * 0.1 + 0.9;
+            
+            vec3 grassColor1 = vec3(0.2, 0.6, 0.2);
+            vec3 grassColor2 = vec3(0.3, 0.7, 0.3);
+            color = mix(grassColor1, grassColor2, grass);
+            
+            // Applica l'ombra completa dello gnomone
+            float shadowFactor = calculateGnomonShadow(v_worldPos, u_lightDirection, u_gnomonPosition);
+            color = color * shadowFactor;
+        }
+        
+        if (u_isGnomon > 0.5) {
+            // Materiale bronzo per lo gnomone
+            float metallic = sin(v_position.y * 25.0) * 0.1 + 0.9;
+            color = vec3(0.8, 0.6, 0.2) * metallic;
+            
+            float selfShadow = dot(v_normal, lightDir);
+            if (selfShadow < 0.4) {
+                float shadowFactor = smoothstep(0.0, 0.4, selfShadow);
+                color = mix(color * 0.2, color, shadowFactor);
+            }
+        }
+        
+        if (u_isHourLine > 0.5) {
+            // Linee orarie in pietra chiara
+            color = vec3(0.9, 0.9, 0.8);
+        }
+        
+        // Illuminazione finale
+        vec3 ambient = vec3(0.3, 0.35, 0.4);
+        color = color * light + color * ambient * 0.2;
+        
+        gl_FragColor = vec4(color, 1.0);
+    }
+`;
 
         // Costanti astronomiche per Roma
         const ROME_LATITUDE = 41.9 * Math.PI / 180; // 41.9°N in radianti
