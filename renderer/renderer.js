@@ -4,17 +4,17 @@ import { multiply } from '../utils/math-utils.js';
  * Handles rendering of 3D objects in WebGL by managing shader attributes and uniforms.
  */
 export class Renderer {
-/**
- * Initializes the renderer with the WebGL context and shader program.
- * Binds attribute and uniform locations for fast access during rendering.
- * 
- * Stores shader-related locations for:
- * - Vertex attributes: position, normal, texture coordinates
- * - Uniforms: matrices, color, lighting, shadow and object type flags
- *
- * @param {WebGLRenderingContext} gl - The WebGL rendering context.
- * @param {WebGLProgram} program - The compiled and linked shader program.
- */
+    /**
+     * Initializes the renderer with the WebGL context and shader program.
+     * Binds attribute and uniform locations for fast access during rendering.
+     * 
+     * Stores shader-related locations for:
+     * - Vertex attributes: position, normal, texture coordinates
+     * - Uniforms: matrices, color, lighting, shadow and object type flags
+     *
+     * @param {WebGLRenderingContext} gl - The WebGL rendering context.
+     * @param {WebGLProgram} program - The compiled and linked shader program.
+     */
     constructor(gl, program) {
         this.gl = gl;
         this.program = program;
