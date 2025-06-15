@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Digital Sundial - Rome</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <canvas id="canvas"></canvas>
@@ -34,9 +34,7 @@
         <span id="heightValue">45°</span>
       </div>
       <div class="control-group">
-        <label for="monthDay"
-          >Day of year (for equation of time):</label
-        >
+        <label for="monthDay">Day of year (for equation of time):</label>
         <input
           type="range"
           id="monthDay"
@@ -49,8 +47,20 @@
       </div>
       <div class="control-group">
         <label>
-          <input type="checkbox" id="autoRotate" checked /> Daily
-          Simulation
+          <input type="checkbox" id="autoRotate" checked /> Daily Simulation
+        </label>
+      </div>
+      <div class="control-group">
+        <label>
+          <input type="checkbox" id="enableShadows" checked />
+          Activate Shadows
+        </label>
+      </div>
+
+      <div class="control-group">
+        <label>
+          <input type="checkbox" id="lowQualityTerrain" />
+          Simplify terrain texture
         </label>
       </div>
       <div class="time-display">
@@ -60,10 +70,22 @@
       <div class="info">
         Sundial for Rome (41.9°N, 12.5°E)<br />
         Hour lines are calculated astronomically.<br />
-        The equation of time corrects the difference between solar and civil time.
+        The equation of time corrects the difference between solar and civil
+        time.
       </div>
     </div>
-
+    <div id="fpsCounter" style="
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.6);
+    color: #00ff00;
+    font-family: monospace;
+    font-size: 14px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    z-index: 9999;
+    ">FPS: --</div>
     <script type="module" src="utils/math-utils.js"></script>
     <script type="module" src="utils/astronomy.js"></script>
     <script type="module" src="webgl/shaders.js"></script>

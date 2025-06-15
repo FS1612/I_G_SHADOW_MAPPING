@@ -29,6 +29,8 @@ export class Renderer {
         this.isGnomonLocation = gl.getUniformLocation(program, 'u_isGnomon');
         this.isHourLineLocation = gl.getUniformLocation(program, 'u_isHourLine');
         this.gnomonPositionLocation = gl.getUniformLocation(program, 'u_gnomonPosition');
+        this.enableShadowsLocation = gl.getUniformLocation(program, 'u_enableShadows');
+        this.lowQualityLocation = gl.getUniformLocation(program, 'u_lowQuality');
     }
     /**
      * Draws a 3D object using the current shader and WebGL context.
@@ -74,7 +76,7 @@ export class Renderer {
      * @param {Float32Array} modelMatrix - Model transformation matrix.
      * @param {Float32Array} normalMatrix - Matrix for transforming normals.
      */
-    setUniforms(lightDirection, mvpMatrix, modelMatrix, normalMatrix) {
+    setUniforms(lightDirection, mvpMatrix, modelMatrix, normalMatrix, enableShadows = true, lowQuality = false) {
         const gl = this.gl;
         
         gl.uniform3fv(this.lightDirectionLocation, lightDirection);
@@ -82,5 +84,7 @@ export class Renderer {
         gl.uniformMatrix4fv(this.mvpMatrixLocation, false, mvpMatrix);
         gl.uniformMatrix4fv(this.modelMatrixLocation, false, modelMatrix);
         gl.uniformMatrix4fv(this.normalMatrixLocation, false, normalMatrix);
+        gl.uniform1f(this.enableShadowsLocation, enableShadows ? 1.0 : 0.0);
+         gl.uniform1f(this.lowQualityLocation, lowQuality ? 1.0 : 0.0);
     }
 }

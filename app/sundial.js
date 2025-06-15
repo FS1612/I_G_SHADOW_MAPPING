@@ -30,7 +30,8 @@ export class SundialApp {
         this.buffers = {};
         /** Time accumulator for solar animation */
         this.animationTime = 0;
-        
+
+        this.isLowQualityLoaded = false;
         this.init();
     }
     /**
@@ -81,6 +82,7 @@ export class SundialApp {
     /**
      * Generates the 3D geometry: plane, gnomon, and hour lines.
      */
+
     createGeometries() {
         this.geometries.plane = createPlane(12);
         this.geometries.gnomon = createGnomon();
@@ -120,7 +122,7 @@ export class SundialApp {
         const ROME_LATITUDE = 41.9 * Math.PI / 180;
         const hourAngles = calculateSundialHourAngles(ROME_LATITUDE);
 
-         // Use the same matrices as in 3D rendering
+        // Use the same matrices as in 3D rendering
         const projectionMatrix = mat4();
         const viewMatrix = mat4();
         const mvpMatrix = mat4();
@@ -138,7 +140,7 @@ export class SundialApp {
 
             // 3D position of the hour marker
             const x3d = Math.sin(angle) * length;
-            const y3d = 0.5; // Altezza sul piano
+            const y3d = 0.5; // height from plane
             const z3d = Math.cos(angle) * length;
 
             // Trasforma in coordinate schermo usando la matrice MVP
@@ -150,7 +152,7 @@ export class SundialApp {
             const clipW = worldPos[0] * mvpMatrix[3] + worldPos[1] * mvpMatrix[7] + worldPos[2] * mvpMatrix[11] + worldPos[3] * mvpMatrix[15];
 
             // Convert to screen coordinates
-            if (clipW > 0) { 
+            if (clipW > 0) {
                 const ndcX = clipX / clipW;
                 const ndcY = clipY / clipW;
 
@@ -175,7 +177,18 @@ export class SundialApp {
     render = () => {
         try {
             const values = this.uiControls.getValues();
-
+            //to check if the user want the terrain to be fully detailed or not
+            if (values.lowQuality && !this.isLowQualityLoaded) {
+                this.geometries.plane = createPlane(12, 10); 
+                this.buffers.planeVertex = createBuffer(this.gl, this.geometries.plane.vertices);
+                this.buffers.planeIndex = createIndexBuffer(this.gl, this.geometries.plane.indices);
+                this.isLowQualityLoaded = true;
+            } else if (!values.lowQuality && this.isLowQualityLoaded) {
+                this.geometries.plane = createPlane(12, 60); 
+                this.buffers.planeVertex = createBuffer(this.gl, this.geometries.plane.vertices);
+                this.buffers.planeIndex = createIndexBuffer(this.gl, this.geometries.plane.indices);
+                this.isLowQualityLoaded = false;
+            }
             // Update sun position if auto-rotation is enabled
             if (values.autoRotate) {
                 this.animationTime += 0.01;
@@ -221,7 +234,8 @@ export class SundialApp {
             multiply(mvpMatrix, projectionMatrix, viewMatrix);
             multiply(mvpMatrix, mvpMatrix, modelMatrix);
 
-            this.renderer.setUniforms(lightDirection, mvpMatrix, modelMatrix, modelMatrix);
+            this.renderer.setUniforms(lightDirection, mvpMatrix, modelMatrix, modelMatrix, values.enableShadows, values.lowQuality);
+
 
             // Draw the ground
             this.renderer.drawObject(
@@ -268,7 +282,19 @@ export class SundialApp {
         } catch (error) {
             console.error('Rendering error:', error);
         }
-
+        // FPS Counter
+        this.frameCount = (this.frameCount || 0) + 1;
+        const now = performance.now();
+        this.lastFpsUpdate = this.lastFpsUpdate || now;
+        if (now - this.lastFpsUpdate >= 1000) {
+            const fps = this.frameCount;
+            const fpsElement = document.getElementById('fpsCounter');
+            if (fpsElement) {
+                fpsElement.textContent = `FPS: ${fps}`;
+            }
+            this.frameCount = 0;
+            this.lastFpsUpdate = now;
+        }
         requestAnimationFrame(this.render);
     }
 }

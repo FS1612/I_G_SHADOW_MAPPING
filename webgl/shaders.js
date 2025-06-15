@@ -46,13 +46,15 @@ varying vec3 v_normal;
 varying vec2 v_texCoord;
 varying vec3 v_lightDirection;
 varying vec3 v_worldPos;
-
+uniform float u_enableShadows;
 uniform vec3 u_color;
 uniform float u_isGround;
 uniform float u_isGnomon;
 uniform float u_isHourLine;
 uniform vec3 u_lightDirection;
 uniform vec3 u_gnomonPosition;
+uniform float u_lowQuality;
+
 
 // Function to calculate if a point is in the shadow of the gnomon
 float calculateGnomonShadow(vec3 worldPos, vec3 lightDir, vec3 gnomonBase) {
@@ -136,8 +138,9 @@ void main() {
     
     if (u_isGround > 0.5) {
         // More realistic grass effect
-        float noise1 = sin(v_worldPos.x * 12.0) * sin(v_worldPos.z * 12.0);
-        float noise2 = sin(v_worldPos.x * 20.0 + v_worldPos.z * 20.0);
+        float scaleFactor = mix(1.0, 0.4, u_lowQuality);
+        float noise1 = sin(v_worldPos.x * 12.0 * scaleFactor) * sin(v_worldPos.z * 12.0 * scaleFactor);
+        float noise2 = sin(v_worldPos.x * 20.0 * scaleFactor + v_worldPos.z * 20.0 * scaleFactor);
         float grass = (noise1 + noise2 * 0.3) * 0.1 + 0.9;
         
         vec3 grassColor1 = vec3(0.2, 0.6, 0.2);
@@ -145,7 +148,7 @@ void main() {
         color = mix(grassColor1, grassColor2, grass);
         
         // Apply complete gnomon shadow
-        float shadowFactor = calculateGnomonShadow(v_worldPos, u_lightDirection, u_gnomonPosition);
+        float shadowFactor = u_enableShadows > 0.5 ? calculateGnomonShadow(v_worldPos, u_lightDirection, u_gnomonPosition) : 1.0; //to address the fact that the user may does not wanta shadows
         color = color * shadowFactor;
     }
     

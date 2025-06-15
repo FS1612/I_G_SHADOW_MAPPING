@@ -89,6 +89,10 @@ export class UIControls {
         this.timeDisplay = document.getElementById('timeDisplay');
         /** @type {HTMLInputElement} */
         this.shadowTime = document.getElementById('shadowTime');
+        /** @type {HTMLInputElement} */
+        this.enableShadowsCheckbox = document.getElementById('enableShadows');
+        /** @type {HTMLInputElement} */
+        this.lowQualityTerrainCheckbox = document.getElementById('lowQualityTerrain');
 
         this.setupEventListeners();
         this.updateDisplay();
@@ -118,7 +122,9 @@ export class UIControls {
             sunAngle: parseFloat(this.sunAngleSlider.value),
             sunHeight: parseFloat(this.sunHeightSlider.value),
             dayOfYear: parseInt(this.monthDaySlider.value),
-            autoRotate: this.autoRotateCheckbox.checked
+            autoRotate: this.autoRotateCheckbox.checked,
+            enableShadows: this.enableShadowsCheckbox.checked,
+            lowQuality: this.lowQualityTerrainCheckbox.checked
         };
     }
     /**
