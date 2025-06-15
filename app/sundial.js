@@ -2,14 +2,52 @@
  * Main class for the WebGL-based 3D Sundial application.
  * Initializes shaders, geometry, controls, and manages the render loop.
  */
+
 import { vertexShaderSource, fragmentShaderSource } from '../webgl/shaders.js';
-import { createShader, createProgram, createBuffer, createIndexBuffer, initializeWebGL, resizeCanvas, setupWebGLState } from '../webgl/webgl-utils.js';
+import { createShader, createProgram, createBuffer, createIndexBuffer, initializeWebGL, resizeCanvas, setupWebGLState, initShadowMap } from '../webgl/webgl-utils.js';
 import { mat4, identity, perspective, lookAt, multiply } from '../utils/math-utils.js';
 import { calculateTimeFromSun, calculateShadowTime, calculateSundialHourAngles } from '../utils/astronomy.js';
 import { createPlane, createGnomon, createHourLines } from '../geometry/geometry.js';
 import { Renderer } from '../renderer/renderer.js';
 import { CameraControls, UIControls } from '../controls/controls.js';
+/**
+ * Creates an orthographic projection matrix.
+ * Used for shadow map rendering from light's point of view.
+ *
+ * @param {number} left - Left plane of the orthographic volume.
+ * @param {number} right - Right plane.
+ * @param {number} bottom - Bottom plane.
+ * @param {number} top - Top plane.
+ * @param {number} near - Near clipping plane.
+ * @param {number} far - Far clipping plane.
+ * @returns {Float32Array} A 4x4 orthographic projection matrix.
+ */
 
+function createOrthographicMatrix(left, right, bottom, top, near, far) {
+    const matrix = new Float32Array(16);
+    
+    matrix[0] = 2 / (right - left);
+    matrix[1] = 0;
+    matrix[2] = 0;
+    matrix[3] = 0;
+    
+    matrix[4] = 0;
+    matrix[5] = 2 / (top - bottom);
+    matrix[6] = 0;
+    matrix[7] = 0;
+    
+    matrix[8] = 0;
+    matrix[9] = 0;
+    matrix[10] = -2 / (far - near);
+    matrix[11] = 0;
+    
+    matrix[12] = -(right + left) / (right - left);
+    matrix[13] = -(top + bottom) / (top - bottom);
+    matrix[14] = -(far + near) / (far - near);
+    matrix[15] = 1;
+    
+    return matrix;
+}
 export class SundialApp {
     constructor() {
         /** @type {HTMLCanvasElement} */
@@ -57,11 +95,23 @@ export class SundialApp {
         // Initialize renderer
         this.renderer = new Renderer(this.gl, this.program);
 
+        // Initialize shadow mapping
+        const { shadowFramebuffer, shadowTexture, shadowProgram } = initShadowMap(this.gl);
+        /** @type {WebGLFramebuffer} */
+        this.shadowFramebuffer = shadowFramebuffer;
+        this.shadowTexture = shadowTexture;
+        
+        this.shadowProgram = shadowProgram;
+
+        // Set shadow program in renderer
+        this.renderer.setShadowProgram(shadowProgram);
         // Initialize user controls
         this.cameraControls = new CameraControls(this.canvas);
         this.uiControls = new UIControls();
 
+        ;
         // Start rendering loop
+
         this.render();
     }
     /**
@@ -177,18 +227,20 @@ export class SundialApp {
     render = () => {
         try {
             const values = this.uiControls.getValues();
-            //to check if the user want the terrain to be fully detailed or not
+
+            // Handle quality settings
             if (values.lowQuality && !this.isLowQualityLoaded) {
-                this.geometries.plane = createPlane(12, 10); 
+                this.geometries.plane = createPlane(12, 10);
                 this.buffers.planeVertex = createBuffer(this.gl, this.geometries.plane.vertices);
                 this.buffers.planeIndex = createIndexBuffer(this.gl, this.geometries.plane.indices);
                 this.isLowQualityLoaded = true;
             } else if (!values.lowQuality && this.isLowQualityLoaded) {
-                this.geometries.plane = createPlane(12, 60); 
+                this.geometries.plane = createPlane(12, 60);
                 this.buffers.planeVertex = createBuffer(this.gl, this.geometries.plane.vertices);
                 this.buffers.planeIndex = createIndexBuffer(this.gl, this.geometries.plane.indices);
                 this.isLowQualityLoaded = false;
             }
+
             // Update sun position if auto-rotation is enabled
             if (values.autoRotate) {
                 this.animationTime += 0.01;
@@ -212,7 +264,46 @@ export class SundialApp {
             const shadowTimeStr = calculateShadowTime(lightDirection, values.dayOfYear);
             this.uiControls.updateTimeDisplay(currentTime, shadowTimeStr);
 
-            //  WebGL setup
+            // Calculate light matrices
+            const lightViewMatrix = mat4();
+          
+            const lightViewProjectionMatrix = mat4();
+
+            const lightDistance = 30;
+            const lightPos = [
+                -lightDirection[0] * lightDistance,
+                Math.max(5, Math.abs(lightDirection[1]) * lightDistance + 5),
+                -lightDirection[2] * lightDistance
+            ];
+            lookAt(lightViewMatrix, lightPos, [0, 0, 0], [0, 1, 0]);
+            // Usa proiezione ortogonale invece di prospettica per ombre più precise
+            const orthoSize = 25;
+            // Matrice di proiezione ortogonale: left, right, bottom, top, near, far
+            const lightProjectionMatrix = createOrthographicMatrix(-25, 25, -25, 25, 1, 100);
+            multiply(lightViewProjectionMatrix, lightProjectionMatrix, lightViewMatrix);
+
+            // 1. RENDER SHADOW MAP
+            if (values.enableShadows) {
+                this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.shadowFramebuffer);
+                this.gl.viewport(0, 0, 2048, 2048);
+                this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+                this.gl.useProgram(this.shadowProgram);
+
+                const lightMvpLocation = this.gl.getUniformLocation(this.shadowProgram, 'u_lightViewProjectionMatrix');
+                this.gl.uniformMatrix4fv(lightMvpLocation, false, lightViewProjectionMatrix);
+
+                /**
+                * Renders depth-only geometry into the shadow map framebuffer.
+                * This is the first pass of a two-pass rendering process.
+                * Called internally by the `render` loop.
+                */
+                this.renderForShadowMap();
+
+                this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
+                this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+            }
+
+            // 2. NORMAL SCENE RENDER
             setupWebGLState(this.gl);
             this.gl.useProgram(this.program);
 
@@ -221,7 +312,6 @@ export class SundialApp {
             const viewMatrix = mat4();
             const modelMatrix = mat4();
             const mvpMatrix = mat4();
-            const normalMatrix = mat4();
 
             perspective(projectionMatrix, Math.PI / 4, this.canvas.width / this.canvas.height, 0.1, 100);
 
@@ -229,13 +319,24 @@ export class SundialApp {
             const cameraPos = this.cameraControls.getCameraPosition();
             lookAt(viewMatrix, cameraPos, [0, 0, 0], [0, 1, 0]);
 
-            // Matrces setup 
+            // Matrices setup 
             identity(modelMatrix);
             multiply(mvpMatrix, projectionMatrix, viewMatrix);
             multiply(mvpMatrix, mvpMatrix, modelMatrix);
 
-            this.renderer.setUniforms(lightDirection, mvpMatrix, modelMatrix, modelMatrix, values.enableShadows, values.lowQuality);
+            // Set shadow map texture and uniforms
+            if (values.enableShadows) {
+                this.gl.activeTexture(this.gl.TEXTURE0);
+                this.gl.bindTexture(this.gl.TEXTURE_2D, this.shadowTexture);
+                this.gl.uniform1i(this.gl.getUniformLocation(this.program, "u_shadowMap"), 0);
+                this.gl.uniformMatrix4fv(
+                    this.gl.getUniformLocation(this.program, "u_lightViewProjectionMatrix"),
+                    false,
+                    lightViewProjectionMatrix
+                );
+            }
 
+            this.renderer.setUniforms(lightDirection, mvpMatrix, modelMatrix, modelMatrix, values.enableShadows, values.lowQuality);
 
             // Draw the ground
             this.renderer.drawObject(
@@ -247,21 +348,23 @@ export class SundialApp {
             );
 
             // Draw hour lines
-            this.buffers.hourLines.forEach(lineData => {
+            this.buffers.hourLines.forEach((lineData, index) => {
+                // Get the original geometry data for index counts
+                const originalLineData = this.geometries.hourLines[index];
                 // line
                 this.renderer.drawObject(
                     lineData.lineVertexBuffer,
                     lineData.lineIndexBuffer,
-                    lineData.lineIndexBuffer.length || this.geometries.hourLines.find(h => h.hour === lineData.hour)?.lineIndices.length || 0,
+                    originalLineData.lineIndices.length,  // Use original geometry length
                     [0.9, 0.9, 0.8],
                     false, false, true
                 );
 
-                // hour markers
+                // Draw hour markers
                 this.renderer.drawObject(
                     lineData.markerVertexBuffer,
                     lineData.markerIndexBuffer,
-                    lineData.markerIndexBuffer.length || this.geometries.hourLines.find(h => h.hour === lineData.hour)?.markerIndices.length || 0,
+                    originalLineData.markerIndices.length,  // Use original geometry length
                     [0.7, 0.7, 0.6],
                     false, false, true
                 );
@@ -282,7 +385,11 @@ export class SundialApp {
         } catch (error) {
             console.error('Rendering error:', error);
         }
-        // FPS Counter
+
+        /**
+        * Updates and displays a simple FPS (frames per second) counter.
+        * Useful for monitoring performance during rendering.
+        */
         this.frameCount = (this.frameCount || 0) + 1;
         const now = performance.now();
         this.lastFpsUpdate = this.lastFpsUpdate || now;
@@ -295,6 +402,39 @@ export class SundialApp {
             this.frameCount = 0;
             this.lastFpsUpdate = now;
         }
+
         requestAnimationFrame(this.render);
     }
+    renderForShadowMap() {
+    const gl = this.gl;
+    
+    // Use the shadow program
+    gl.useProgram(this.shadowProgram);
+    
+    // Render gnomon (casts shadows)
+    this.renderer.drawShadowObject(
+        this.buffers.gnomonVertex,
+        this.buffers.gnomonIndex,
+        this.geometries.gnomon.indices.length
+    );
+    
+    // Render hour lines (can cast shadows too)
+    this.buffers.hourLines.forEach((lineData, index) => {
+        const originalLineData = this.geometries.hourLines[index];
+        
+        // Render line geometry
+        this.renderer.drawShadowObject(
+            lineData.lineVertexBuffer,
+            lineData.lineIndexBuffer,
+            originalLineData.lineIndices.length
+        );
+        
+        // Render marker geometry
+        this.renderer.drawShadowObject(
+            lineData.markerVertexBuffer,
+            lineData.markerIndexBuffer,
+            originalLineData.markerIndices.length
+        );
+    });
+}
 }

@@ -1,3 +1,5 @@
+import { shadowVertexShaderSource, shadowFragmentShaderSource } from './shaders.js';
+const shadowMapSize = 1024;
 /**
  * Compiles a WebGL shader from source code.
  * @param {WebGLRenderingContext} gl - The WebGL context.
@@ -95,4 +97,47 @@ export function setupWebGLState(gl) {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);// enable Z-buffer
     gl.disable(gl.CULL_FACE);// draw both triangle faces
+}
+/**
+ * Initializes a shadow map framebuffer, texture, and associated shaders.
+ * @param {WebGLRenderingContext} gl - The WebGL context.
+ * @returns {{
+ *   shadowFramebuffer: WebGLFramebuffer,
+ *   shadowTexture: WebGLTexture,
+ *   shadowProgram: WebGLProgram
+ * }} An object containing the framebuffer, shadow texture, and compiled shader program for shadow rendering.
+ */
+export function initShadowMap(gl) {
+    const shadowMapSize = 2048; // resolution setting
+    
+    // Create shadow map texture 
+    const shadowTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, shadowTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, shadowMapSize, shadowMapSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    
+    // filtering for shadow maps
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    
+    // Create framebuffer
+    const shadowFramebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFramebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, shadowTexture, 0);
+    
+    // Create depth buffer
+    const depthBuffer = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, shadowMapSize, shadowMapSize);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+    
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    
+    // Create shadow program
+    const shadowVertexShader = createShader(gl, gl.VERTEX_SHADER, shadowVertexShaderSource);
+    const shadowFragmentShader = createShader(gl, gl.FRAGMENT_SHADER, shadowFragmentShaderSource);
+    const shadowProgram = createProgram(gl, shadowVertexShader, shadowFragmentShader);
+    
+    return { shadowFramebuffer, shadowTexture, shadowProgram };
 }
