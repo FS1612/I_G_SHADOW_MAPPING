@@ -5,8 +5,8 @@ import { calculateSundialHourAngles } from '../utils/astronomy.js';
  * @param {number} size - The total width/length of the plane.
  * @returns {{vertices: Float32Array, indices: Uint16Array}} WebGL-ready geometry data.
  */
-export function createPlane(size) {
-    const segments = 60;
+export function createPlane(size, segments = 60) {
+    
     const vertices = [];
     const indices = [];
 
@@ -165,4 +165,48 @@ export function createHourLines() {
     });
 
     return lines;
+}
+export function createSphere(radius = 1.0, segments = 16) {
+    const vertices = [];
+    const indices = [];
+
+    // Genera vertici
+    for (let lat = 0; lat <= segments; lat++) {
+        const theta = lat * Math.PI / segments;
+        const sinTheta = Math.sin(theta);
+        const cosTheta = Math.cos(theta);
+
+        for (let lon = 0; lon <= segments; lon++) {
+            const phi = lon * 2 * Math.PI / segments;
+            const sinPhi = Math.sin(phi);
+            const cosPhi = Math.cos(phi);
+
+            const x = cosPhi * sinTheta;
+            const y = cosTheta;
+            const z = sinPhi * sinTheta;
+
+            // Position
+            vertices.push(x * radius, y * radius, z * radius);
+            // Normal (same as position for sphere)
+            vertices.push(x, y, z);
+            // Texture coordinates
+            vertices.push(lon / segments, lat / segments);
+        }
+    }
+
+    // Genera indici
+    for (let lat = 0; lat < segments; lat++) {
+        for (let lon = 0; lon < segments; lon++) {
+            const first = (lat * (segments + 1)) + lon;
+            const second = first + segments + 1;
+
+            indices.push(first, second, first + 1);
+            indices.push(second, second + 1, first + 1);
+        }
+    }
+
+    return {
+        vertices: new Float32Array(vertices),
+        indices: new Uint16Array(indices)
+    };
 }

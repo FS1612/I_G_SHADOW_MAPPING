@@ -19,6 +19,7 @@ export class Renderer {
         this.gl = gl;
         this.program = program;
         this.shadowProgram = null;
+        this.isCloudLocation = gl.getUniformLocation(program, 'u_isCloud');
 
         // Vertex attributes
         this.positionLocation = gl.getAttribLocation(program, 'a_position');
@@ -51,9 +52,13 @@ export class Renderer {
      * @param {boolean} [isGnomon=false] - True if drawing the gnomon.
      * @param {boolean} [isHourLine=false] - True if drawing hour line geometry.
      */
-    drawObject(vertexBuffer, indexBuffer, indexCount, color, isGround = false, isGnomon = false, isHourLine = false) {
+    drawObject(vertexBuffer, indexBuffer, indexCount, color, isGround = false, isGnomon = false, isHourLine = false, isCloud = false)
+ {
+    if (this.opacityLocation && typeof opacity === 'number') {
+    gl.uniform1f(this.opacityLocation, opacity);
+}
         const gl = this.gl;
-
+        gl.uniform1f(this.isCloudLocation, isCloud ? 1.0 : 0.0);
         gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
 
         // Vertex format: position(3) + normal(3) + texCoord(2) = 8 floats = 32 bytes
@@ -74,6 +79,7 @@ export class Renderer {
         gl.uniform1f(this.isHourLineLocation, isHourLine ? 1.0 : 0.0);
 
         gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_SHORT, 0);
+        
     }
 
     /**

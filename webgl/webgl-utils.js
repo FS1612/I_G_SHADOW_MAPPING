@@ -1,5 +1,5 @@
-import { shadowVertexShaderSource, shadowFragmentShaderSource } from './shaders.js';
-const shadowMapSize = 1024;
+
+import { shadowVertexShaderSource, shadowFragmentShaderSource, skyVertexShaderSource, skyFragmentShaderSource } from './shaders.js';
 /**
  * Compiles a WebGL shader from source code.
  * @param {WebGLRenderingContext} gl - The WebGL context.
@@ -140,4 +140,54 @@ export function initShadowMap(gl) {
     const shadowProgram = createProgram(gl, shadowVertexShader, shadowFragmentShader);
     
     return { shadowFramebuffer, shadowTexture, shadowProgram };
+}
+/**
+ * Crea i shader per il cielo
+ */
+export function createSkyProgram(gl, skyVertexShaderSource, skyFragmentShaderSource) {
+    const skyVertexShader = createShader(gl, gl.VERTEX_SHADER, skyVertexShaderSource);
+    const skyFragmentShader = createShader(gl, gl.FRAGMENT_SHADER, skyFragmentShaderSource);
+    return createProgram(gl, skyVertexShader, skyFragmentShader);
+}
+
+/**
+ * Crea la geometria per la cupola del cielo
+ */
+export function createSkyDome(gl) {
+    const vertices = [];
+    const indices = [];
+    
+    const radius = 100;
+    const segments = 32;
+    const rings = 16;
+    
+    // Genera vertici
+    for (let ring = 0; ring <= rings; ring++) {
+        const phi = (ring / rings) * Math.PI * 0.5; // Solo metà superiore
+        for (let seg = 0; seg <= segments; seg++) {
+            const theta = (seg / segments) * Math.PI * 2;
+            
+            const x = radius * Math.sin(phi) * Math.cos(theta);
+            const y = radius * Math.cos(phi);
+            const z = radius * Math.sin(phi) * Math.sin(theta);
+            
+            vertices.push(x, y, z);
+        }
+    }
+    
+    // Genera indici
+    for (let ring = 0; ring < rings; ring++) {
+        for (let seg = 0; seg < segments; seg++) {
+            const current = ring * (segments + 1) + seg;
+            const next = current + segments + 1;
+            
+            indices.push(current, next, current + 1);
+            indices.push(next, next + 1, current + 1);
+        }
+    }
+    
+    return {
+        vertices: new Float32Array(vertices),
+        indices: new Uint16Array(indices)
+    };
 }
