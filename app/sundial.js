@@ -6,49 +6,12 @@ import { skyVertexShaderSource, skyFragmentShaderSource } from '../webgl/shaders
 import { createSkyProgram, createSkyDome } from '../webgl/webgl-utils.js';
 import { vertexShaderSource, fragmentShaderSource } from '../webgl/shaders.js';
 import { createShader, createProgram, createBuffer, createIndexBuffer, initializeWebGL, resizeCanvas, setupWebGLState, initShadowMap } from '../webgl/webgl-utils.js';
-import { mat4, identity, perspective, lookAt, multiply } from '../utils/math-utils.js';
+import { mat4, identity, perspective, lookAt, multiply, createOrthographicMatrix } from '../utils/math-utils.js';
 import { calculateTimeFromSun, calculateShadowTime, calculateSundialHourAngles } from '../utils/astronomy.js';
-import { createPlane, createGnomon, createHourLines, createSphere } from '../geometry/geometry.js';
+import { createPlane } from '../geometry/geometry.js';
 import { Renderer } from '../renderer/renderer.js';
 import { CameraControls, UIControls } from '../controls/controls.js';
-
-/**
- * Creates an orthographic projection matrix.
- * Used for shadow map rendering from light's point of view.
- *
- * @param {number} left - Left plane of the orthographic volume.
- * @param {number} right - Right plane.
- * @param {number} bottom - Bottom plane.
- * @param {number} top - Top plane.
- * @param {number} near - Near clipping plane.
- * @param {number} far - Far clipping plane.
- * @returns {Float32Array} A 4x4 orthographic projection matrix.
- */
-function createOrthographicMatrix(left, right, bottom, top, near, far) {
-    const matrix = new Float32Array(16);
-
-    matrix[0] = 2 / (right - left);
-    matrix[1] = 0;
-    matrix[2] = 0;
-    matrix[3] = 0;
-
-    matrix[4] = 0;
-    matrix[5] = 2 / (top - bottom);
-    matrix[6] = 0;
-    matrix[7] = 0;
-
-    matrix[8] = 0;
-    matrix[9] = 0;
-    matrix[10] = -2 / (far - near);
-    matrix[11] = 0;
-
-    matrix[12] = -(right + left) / (right - left);
-    matrix[13] = -(top + bottom) / (top - bottom);
-    matrix[14] = -(far + near) / (far - near);
-    matrix[15] = 1;
-
-    return matrix;
-}
+import { createCloudsGeometry, createStructuredCloudGeometry, createHourLines,createSphere,scatterGrassField } from '../geometry/geometry.js';
 
 export class SundialApp {
     constructor() {
@@ -130,6 +93,7 @@ export class SundialApp {
             // Initialize user controls
             this.cameraControls = new CameraControls(this.canvas);
             this.uiControls = new UIControls();
+            // Load grass texture
 
             // Start rendering loop
             this.render();
@@ -160,95 +124,6 @@ export class SundialApp {
         if (!this.program || !this.skyProgram) {
             throw new Error('Failed to create shader programs');
         }
-    }
-
-    /**
-     * Generates the 3D geometry: plane, gnomon, hour lines, sun, sky, and clouds.
-     */
-    createGeometries() {
-        this.geometries.plane = createPlane(12);
-        this.geometries.gnomon = createGnomon();
-        this.geometries.hourLines = createHourLines();
-        // Create a larger, more detailed sun sphere
-        this.geometries.sun = createSphere(1.5, 20);
-
-        // Create sky geometry
-        this.skyGeometry = createSkyDome(this.gl);
-
-        // Create clouds geometry
-        this.geometries.clouds = this.createCloudsGeometry();
-    }
-
-    /**
- * Sistema di geometria per nuvole realistiche con forma organica
- * Replica la forma classica delle nuvole con gobbe e curve naturali
- */
-
-    createSimpleCloudGeometry(cloudId) {
-  const cloudParts = [];
-
-  for (let i = 0; i < 12; i++) {
-    if (i === 0) {
-      cloudParts.push({
-        geometry: createSphere(1.2, 24),
-        localPosition: [0, 0, 0],
-        scale: 1.0,
-      });
-      continue;
-    }
-
-    const angle = Math.random() * Math.PI * 2;
-    const radius = 0.5 + Math.random() * 2.5;
-    const heightBias = Math.random() * Math.random();
-
-    const offsetX = Math.cos(angle) * radius;
-    const offsetY = (Math.random() - 0.3) * 1.8 * (1 - heightBias);
-    const offsetZ = Math.sin(angle) * radius;
-
-    cloudParts.push({
-      geometry: createSphere(0.8 + Math.random() * 0.4, 24),
-      localPosition: [
-        offsetX + Math.sin(i + cloudId) * 0.3,
-        offsetY,
-        offsetZ + Math.cos(i * 1.3 + cloudId * 0.4) * 0.3
-      ],
-      scale: 0.4 + Math.random() * 0.6,
-    });
-  }
-
-  return cloudParts;
-}
-
-    // Sostituisci il metodo createCloudsGeometry esistente
-    createCloudsGeometry() {
-        const clouds = [];
-        const numClouds = 8; // Meno nuvole ma più dettagliate e realistiche
-
-        for (let i = 0; i < numClouds; i++) {
-            const cloud = {
-                parts: this.createSimpleCloudGeometry(i),
-                position: [
-                    (Math.random() - 0.5) * 10, // Area più ampia
-                    10 + Math.random() ,     // Più alte nel cielo
-                    (Math.random() - 0.5) * 40
-                ],
-                baseScale: 0.8 + Math.random() * 0.4,
-                speed: 0.02 + Math.random() * 0.03, // Movimento ancora più lento
-                // Parametri per colore grigetto variabile
-                grayIntensity: 0.5 + Math.random() * 0.2,
-                warmth: -0.05 + Math.random() * 0.1,
-                // Parametri per deformazione organica
-                wobblePhase: Math.random() * Math.PI * 2,
-                wobbleSpeed: 0.15 + Math.random() * 0.2,
-                // Tipo di nuvola
-                cloudType: i % 3, // Varia il tipo
-                // Età della nuvola (influenza densità)
-                age: Math.random()
-            };
-            clouds.push(cloud);
-        }
-
-        return clouds;
     }
 
     // Aggiorna il metodo createCloudBuffers
@@ -378,6 +253,11 @@ export class SundialApp {
             hour: line.hour,
             angle: line.angle
         }));
+        this.buffers.grassBlades = this.geometries.grassBlades.map(blade => ({
+    vertex: createBuffer(gl, blade.geometry.vertices),
+    index: createIndexBuffer(gl, blade.geometry.indices),
+    transform: blade
+}));
 
         // Sky buffers
         this.skyBuffers.vertex = createBuffer(gl, this.skyGeometry.vertices);
@@ -385,6 +265,11 @@ export class SundialApp {
 
         // Realistic cloud buffers
         this.createCloudBuffers();
+        this.buffers.grassBlades = this.geometries.grassBlades.map(blade => ({
+    vertex: createBuffer(gl, blade.geometry.vertices),
+    index: createIndexBuffer(gl, blade.geometry.indices),
+    transform: blade
+}));
     }
 
     /**
@@ -712,6 +597,9 @@ export class SundialApp {
 
             const realTimeLocation = this.gl.getUniformLocation(this.program, 'u_realTime');
             this.gl.uniform1f(realTimeLocation, simulatedTimeHours);
+            const u_isGrassLocation = this.gl.getUniformLocation(this.program, 'u_isGrass');
+this.gl.uniform1f(u_isGrassLocation, 1.0); // per l’erba
+if (u_isGrassLocation) this.gl.uniform1f(u_isGrassLocation, 0.0);
 
             // SET POINT LIGHT UNIFORMS
             const gl = this.gl;
@@ -827,6 +715,69 @@ export class SundialApp {
                 sunColor,
                 false, false, false
             );
+            // Render grass blades
+if (this.buffers.grassBlades) {
+    this.gl.enable(this.gl.BLEND);
+    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+    
+    const u_isGrassLocation = this.gl.getUniformLocation(this.program, 'u_isGrass');
+    const u_windTimeLocation = this.gl.getUniformLocation(this.program, 'u_windTime');
+    
+    if (u_isGrassLocation) this.gl.uniform1f(u_isGrassLocation, 1.0);
+    if (u_windTimeLocation) this.gl.uniform1f(u_windTimeLocation, this.animationTime);
+    
+    this.buffers.grassBlades.forEach((blade, index) => {
+        const transform = blade.transform;
+        
+        // Calculate wind effect
+        const windTime = this.animationTime * 2.0 + (transform.windPhase || 0);
+        const windStrength = 0.15;
+        const windOffsetX = Math.sin(windTime) * windStrength * (transform.height || 1);
+        const windOffsetZ = Math.cos(windTime * 1.3) * windStrength * (transform.height || 1) * 0.5;
+        
+        // Create model matrix with wind
+        const model = mat4();
+        identity(model);
+        
+        const cos = Math.cos(transform.rotation);
+        const sin = Math.sin(transform.rotation);
+        model[0] = transform.scale * cos;
+        model[2] = -transform.scale * sin;
+        model[8] = transform.scale * sin;
+        model[10] = transform.scale * cos;
+        model[5] = transform.scale;
+        
+        model[12] = transform.position[0] + windOffsetX;
+        model[13] = transform.position[1];
+        model[14] = transform.position[2] + windOffsetZ;
+        
+        const mvp = mat4();
+        multiply(mvp, projectionMatrix, viewMatrix);
+        multiply(mvp, mvp, model);
+        
+        this.renderer.setUniforms(lightDirection, mvp, model, model, values.enableShadows, values.lowQuality);
+        
+        // Grass color with variations
+        const grassVariation = Math.sin(index * 0.1) * 0.1;
+        const grassColor = [
+            0.1 + grassVariation,
+            0.4 + grassVariation * 2,
+            0.05 + Math.abs(grassVariation)
+        ];
+        
+        this.renderer.drawObject(
+            blade.vertex,
+            blade.index,
+            transform.geometry.indices.length,
+            grassColor,
+            false, false, false, false
+        );
+    });
+    
+    // Reset uniforms
+    if (u_isGrassLocation) this.gl.uniform1f(u_isGrassLocation, 0.0);
+    this.gl.disable(this.gl.BLEND);
+}
 
             // Render clouds
 
@@ -844,6 +795,124 @@ export class SundialApp {
 
         requestAnimationFrame(this.render);
     };
-   
+    
+    renderGrass(projectionMatrix, viewMatrix, lightDirection, values) {
+    const gl = this.gl;
+    const grassTime = this.animationTime * 1.5;
+    const u_isGrassLocation = gl.getUniformLocation(this.program, 'u_isGrass');
+    const u_windTimeLocation = gl.getUniformLocation(this.program, 'u_windTime');
+
+    if (u_isGrassLocation) gl.uniform1f(u_isGrassLocation, 1.0);
+    if (u_windTimeLocation) gl.uniform1f(u_windTimeLocation, this.animationTime);
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    this.buffers.grassBlades.forEach((blade, index) => {
+        const transform = blade.transform;
+
+        const windTime = this.animationTime * 2.0 + (transform.windPhase || 0);
+        const windStrength = 0.15;
+        const windOffsetX = Math.sin(windTime) * windStrength * (transform.height || 1);
+        const windOffsetZ = Math.cos(windTime * 1.3) * windStrength * (transform.height || 1) * 0.5;
+
+        const model = mat4();
+        identity(model);
+
+        const cos = Math.cos(transform.rotation);
+        const sin = Math.sin(transform.rotation);
+        model[0] = transform.scale * cos;
+        model[2] = -transform.scale * sin;
+        model[8] = transform.scale * sin;
+        model[10] = transform.scale * cos;
+        model[5] = transform.scale;
+
+        model[12] = transform.position[0] + windOffsetX;
+        model[13] = transform.position[1];
+        model[14] = transform.position[2] + windOffsetZ;
+
+        const mvp = mat4();
+        multiply(mvp, projectionMatrix, viewMatrix);
+        multiply(mvp, mvp, model);
+
+        this.renderer.setUniforms(lightDirection, mvp, model, model, values.enableShadows, values.lowQuality);
+
+        const grassVariation = Math.sin(index * 0.1) * 0.1;
+        const grassColor = [
+            0.1 + grassVariation,
+            0.4 + grassVariation * 2,
+            0.05 + Math.abs(grassVariation)
+        ];
+
+        this.renderer.drawObject(
+            blade.vertex,
+            blade.index,
+            transform.geometry.indices.length,
+            grassColor,
+            false, false, false, false
+        );
+    });
+
+    if (u_isGrassLocation) gl.uniform1f(u_isGrassLocation, 0.0);
+    gl.disable(gl.BLEND);
+}
+
+  /**
+ * Generates the 3D geometry: plane, gnomon, hour lines, sun, sky, and clouds.
+ */
+
+ createGeometries() {
+    this.geometries.plane = createPlane(12);
+    this.geometries.gnomon = this.createGnomon();
+    this.geometries.hourLines = createHourLines();
+    // Create a larger, more detailed sun sphere
+    this.geometries.sun = createSphere(1.5, 20);
+
+    // Create sky geometry
+    this.skyGeometry = createSkyDome(this.gl);
+
+    // Create clouds geometry
+    this.geometries.clouds = createCloudsGeometry();
+
+    this.geometries.grassBlades = scatterGrassField(5000);
+    
+}
+/**
+ * Creates the 3D geometry of the gnomon (shadow-casting rod).
+ * @returns {{vertices: Float32Array, indices: Uint16Array}} WebGL-ready gnomon mesh.
+ */
+ createGnomon() {
+    const height = 2;
+    const width = 0.05;
+
+    const vertices = [
+        // Base (4 points)
+        -width, 0, -width, 0, 1, 0, 0, 0,
+        width, 0, -width, 0, 1, 0, 1, 0,
+        width, 0, width, 0, 1, 0, 1, 1,
+        -width, 0, width, 0, 1, 0, 0, 1,
+        // Top (4 points)
+        -width, height, -width, 0, 1, 0, 0, 0,
+        width, height, -width, 0, 1, 0, 1, 0,
+        width, height, width, 0, 1, 0, 1, 1,
+        -width, height, width, 0, 1, 0, 0, 1
+    ];
+
+    const indices = [
+        // Sides
+        0, 1, 5, 0, 5, 4,
+        1, 2, 6, 1, 6, 5,
+        2, 3, 7, 2, 7, 6,
+        3, 0, 4, 3, 4, 7,
+        // Top
+        4, 5, 6, 4, 6, 7
+    ];
+
+    return {
+        vertices: new Float32Array(vertices),
+        indices: new Uint16Array(indices)
+    };
+}
 
 }
+

@@ -168,3 +168,40 @@ export function multiply(out, a, b) {
   out[15] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
   return out;
 }
+/**
+ * Creates an orthographic projection matrix.
+ * Used for shadow map rendering from light's point of view.
+ *
+ * @param {number} left - Left plane of the orthographic volume.
+ * @param {number} right - Right plane.
+ * @param {number} bottom - Bottom plane.
+ * @param {number} top - Top plane.
+ * @param {number} near - Near clipping plane.
+ * @param {number} far - Far clipping plane.
+ * @returns {Float32Array} A 4x4 orthographic projection matrix.
+ */
+export function createOrthographicMatrix(left, right, bottom, top, near, far) {
+    const matrix = new Float32Array(16);
+
+    matrix[0] = 2 / (right - left);
+    matrix[1] = 0;
+    matrix[2] = 0;
+    matrix[3] = 0;
+
+    matrix[4] = 0;
+    matrix[5] = 2 / (top - bottom);
+    matrix[6] = 0;
+    matrix[7] = 0;
+
+    matrix[8] = 0;
+    matrix[9] = 0;
+    matrix[10] = -2 / (far - near);
+    matrix[11] = 0;
+
+    matrix[12] = -(right + left) / (right - left);
+    matrix[13] = -(top + bottom) / (top - bottom);
+    matrix[14] = -(far + near) / (far - near);
+    matrix[15] = 1;
+
+    return matrix;
+}

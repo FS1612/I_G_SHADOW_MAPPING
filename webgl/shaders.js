@@ -17,7 +17,9 @@ export const vertexShaderSource = `
     uniform mat4 u_lightViewProjectionMatrix;
     uniform vec3 u_lightPosition;  // Posizione della sfera luminosa
     uniform vec3 u_lightDirection; // Manteniamo per compatibilità
-    
+        uniform float u_isGrass;
+uniform float u_windTime;
+uniform float u_realTime;
     varying vec3 v_position;
     varying vec3 v_normal;
     varying vec2 v_texCoord;
@@ -27,8 +29,23 @@ export const vertexShaderSource = `
     varying vec3 v_lightPosition;  // Passa la posizione della luce al fragment shader
     
     void main() {
-        gl_Position = u_modelViewProjectionMatrix * vec4(a_position, 1.0);
-        v_worldPos = (u_modelMatrix * vec4(a_position, 1.0)).xyz;
+
+
+        vec3 pos = a_position;
+
+// Oscillazione solo per l'erba
+if (u_isGrass > 0.5) {
+    float growFactor = clamp((u_realTime - 6.0) / 12.0, 0.0, 1.0); // da 6 a 18 cresce
+    vec3 modPosition = a_position;
+    modPosition.y *= growFactor; // effetto crescita
+    gl_Position = u_modelViewProjectionMatrix * vec4(modPosition, 1.0);
+} else {
+    gl_Position = u_modelViewProjectionMatrix * vec4(a_position, 1.0);
+}
+
+gl_Position = u_modelViewProjectionMatrix * vec4(pos, 1.0);
+        v_worldPos = (u_modelMatrix * vec4(pos, 1.0)).xyz;
+
         v_position = a_position;
         v_normal = normalize((u_normalMatrix * vec4(a_normal, 0.0)).xyz);
         v_texCoord = a_texCoord;
@@ -48,6 +65,8 @@ export const vertexShaderSource = `
 // Fragment shader migliorato per erba più realistica
 export const fragmentShaderSource = `
     precision mediump float;
+    uniform float u_isGrass;
+uniform float u_windTime;
     uniform float u_isCloud;
     varying vec3 v_position;
     varying vec3 v_normal;
@@ -68,6 +87,7 @@ uniform float u_opacity;
     uniform float u_lightIntensity;   // Intensità della luce
     uniform float u_lightRadius;     // Raggio di influenza della luce
     uniform sampler2D u_shadowMap;
+uniform float u_realTime;
 
     float sampleShadowMap(vec4 shadowCoord) {
         vec3 shadowCoordNorm = shadowCoord.xyz / shadowCoord.w;
@@ -121,7 +141,7 @@ uniform float u_opacity;
 
     void main() {
         vec3 color = u_color;
-        
+        vec3 finalColor = u_color;
         // Calcola l'illuminazione da point light (sfera)
         vec3 lightDir = normalize(u_lightPosition - v_worldPos);
         float distance = length(u_lightPosition - v_worldPos);
@@ -163,30 +183,21 @@ uniform float u_opacity;
             gl_FragColor = vec4(color, 1.0);
             return;
         }
-        
-        if (u_isGround > 0.5) {
-            // Migliora la qualità del terreno con rumore stratificato
-            vec2 pos = v_worldPos.xz;
-            
-            float noise1 = noise(pos * 0.5) * 0.6;
-            float noise2 = noise(pos * 2.0) * 0.3;
-            float noise3 = noise(pos * 8.0) * 0.1;
-            float grassVariation = noise1 + noise2 + noise3;
-            
-            vec3 grassColor1 = vec3(0.15, 0.4, 0.1);
-            vec3 grassColor2 = vec3(0.25, 0.6, 0.2);
-            vec3 grassColor3 = vec3(0.3, 0.7, 0.25);
-            vec3 dirtColor = vec3(0.4, 0.3, 0.2);
-            
-            color = mix(grassColor1, grassColor2, smoothstep(0.3, 0.7, grassVariation));
-            color = mix(color, grassColor3, smoothstep(0.6, 0.9, grassVariation));
-            
-            float dirtNoise = noise(pos * 1.5 + vec2(100.0, 200.0));
-            if (dirtNoise > 0.7) {
-                color = mix(color, dirtColor, (dirtNoise - 0.7) * 2.0);
-            }
-        }
-        
+     
+     if (u_isGrass > 0.5) {
+    float timeFactor = clamp((u_realTime - 6.0) / 12.0, 0.0, 1.0);
+    
+    // Colore dell’erba cambia: più giallo di pomeriggio, più blu all’alba
+    vec3 morningColor = vec3(0.1, 0.4, 0.1);
+    vec3 afternoonColor = vec3(0.3, 0.5, 0.1);
+    vec3 grassColor = mix(morningColor, afternoonColor, timeFactor);
+    
+    gl_FragColor = vec4(grassColor, 1.0);
+    return;
+}
+
+
+        gl_FragColor = vec4(finalColor, 1.0);
         if (u_isGnomon > 0.5) {
             float metallic = sin(v_position.y * 25.0) * 0.15 + 0.85;
             vec3 bronzeBase = vec3(0.8, 0.6, 0.2);
