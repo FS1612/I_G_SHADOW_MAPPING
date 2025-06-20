@@ -22,7 +22,7 @@ export function renderPlane(mvpMatrix, modelMatrix, lightDirection, values) {
     this.renderer.setUniforms(lightDirection, mvpMatrix, modelMatrix, modelMatrix, values.enableShadows, values.lowQuality);
 
     // COLORE TERRENO - marrone/terra invece di verde
-    const soilColor = [
+        const soilColor = [
         0.4,  // Rosso - colore terra
         0.3,  // Verde - un po' di verde per terreno fertile  
         0.2   // Blu - molto poco per dare calore
@@ -33,7 +33,7 @@ export function renderPlane(mvpMatrix, modelMatrix, lightDirection, values) {
         this.buffers.planeIndex,
         this.geometries.plane.indices.length,
         soilColor,  // Usa colore terra invece di verde
-        true
+        true,false,false,false,false
     );
     
     // Resetta u_isGround

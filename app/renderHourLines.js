@@ -10,7 +10,7 @@ export function renderHourLines(viewMatrix, projectionMatrix, lightDirection, va
         const mvpMatrix = mat4();
         multiply(mvpMatrix, projectionMatrix, viewMatrix);
         multiply(mvpMatrix, mvpMatrix, modelMatrix);
-
+        
         this.renderer.setUniforms(
             lightDirection, 
             mvpMatrix, 
@@ -26,7 +26,7 @@ export function renderHourLines(viewMatrix, projectionMatrix, lightDirection, va
             lineData.lineIndexBuffer,
             originalLineData.lineIndices.length,
             [1.0, 0.0, 0.0], // Rosso acceso per test
-            false, false, true
+            false, false, true,false, false
         );
 
         // Marker
@@ -35,7 +35,7 @@ export function renderHourLines(viewMatrix, projectionMatrix, lightDirection, va
             lineData.markerIndexBuffer,
             originalLineData.markerIndices.length,
             [0.0, 1.0, 0.0], // Verde per i marker
-            false, false, true
+            false, false, true,false, false
         );
     });
 }

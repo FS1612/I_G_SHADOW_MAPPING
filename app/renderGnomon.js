@@ -13,7 +13,7 @@ export function renderGnomon(viewMatrix, projectionMatrix, lightDirection, value
         this.buffers.gnomonVertex,
         this.buffers.gnomonIndex,
         this.geometries.gnomon.indices.length,
-        [0.4, 0.3, 0.2],
-        false, false, true
+        [0.1, 0.0, 0.0],
+        false, true, false,false,false
     );
 }

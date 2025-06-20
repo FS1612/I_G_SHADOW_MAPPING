@@ -70,7 +70,7 @@ export class Renderer {
 
         gl.enableVertexAttribArray(this.texCoordLocation);
         gl.vertexAttribPointer(this.texCoordLocation, 2, gl.FLOAT, false, 32, 24);
-
+        
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
 
         gl.uniform3fv(this.colorLocation, color);
@@ -115,22 +115,32 @@ export class Renderer {
  * @param {WebGLBuffer} indexBuffer - The buffer containing indices.
  * @param {number} indexCount - The number of indices to render.
  */
-    drawShadowObject(vertexBuffer, indexBuffer, indexCount) {
-        const gl = this.gl;
+    drawShadowObject(vertexBuffer, indexBuffer, indexCount, isGrass = false, modelMatrix = null) {
+    const gl = this.gl;
 
-        // Bind vertex buffer
-        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    const windTime = this.clock?.windTime ?? 0.0;
 
-        // Get position attribute location for shadow program
-        const positionLocation = gl.getAttribLocation(this.shadowProgram, 'a_position');
-        gl.enableVertexAttribArray(positionLocation);
-        // Vertex format: position(3) + normal(3) + texCoord(2) = 8 floats = 32 bytes stride
-        gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 32, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
 
-        // Bind index buffer and draw
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-        gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_SHORT, 0);
+    gl.uniform1f(gl.getUniformLocation(this.shadowProgram, "u_isGrass"), isGrass ? 1.0 : 0.0);
+    gl.uniform1f(gl.getUniformLocation(this.shadowProgram, "u_windTime"), windTime);
+
+    // AGGIUNTA IMPORTANTE:
+    if (modelMatrix) {
+        const modelLoc = gl.getUniformLocation(this.shadowProgram, "u_modelMatrix");
+        if (modelLoc) {
+            gl.uniformMatrix4fv(modelLoc, false, modelMatrix);
+        }
     }
+
+    const positionLocation = gl.getAttribLocation(this.shadowProgram, 'a_position');
+    gl.enableVertexAttribArray(positionLocation);
+    gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 32, 0);
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_SHORT, 0);
+}
+
 
     /**
  * Sets the shader program used for shadow map rendering.

@@ -11,11 +11,13 @@ import { calculateTimeFromSun, calculateShadowTime, calculateSundialHourAngles }
 import { createPlane } from '../geometry/geometry.js';
 import { Renderer } from '../renderer/renderer.js';
 import { CameraControls, UIControls } from '../controls/controls.js';
-import { createCloudsGeometry, createStructuredCloudGeometry, createHourLines,createSphere,scatterGrassField } from '../geometry/geometry.js';
+import { createCloudsGeometry, createStructuredCloudGeometry, createHourLines,createSphere,scatterGrassField,createGnomon } from '../geometry/geometry.js';
 import { renderMainScene } from './renderMainScene.js';
 import { renderShadowPass } from './renderShadowPass.js';
 import { renderForShadowMap } from './renderForShadowMap.js';
-
+import { createCloudBuffers } from '../Buffers/createCloudBuffers.js';
+import { createGrassBladesBuffer } from '../Buffers/createGrassBladesBuffer.js';
+import { createHourLinesBuffer } from '../Buffers/createHourLinesBuffer.js';
 export class SundialApp {
     constructor() {
         /** @type {HTMLCanvasElement} */
@@ -236,65 +238,62 @@ this.renderMainScene = renderMainScene.bind(this);
      * Updated createBuffers method to handle realistic clouds
      */
     createBuffers() {
-        const gl = this.gl;
-
-        // Plane buffers
-        this.buffers.planeVertex = createBuffer(gl, this.geometries.plane.vertices);
-        this.buffers.planeIndex = createIndexBuffer(gl, this.geometries.plane.indices);
-
-        // Gnomon buffers
-        this.buffers.gnomonVertex = createBuffer(gl, this.geometries.gnomon.vertices);
-        this.buffers.gnomonIndex = createIndexBuffer(gl, this.geometries.gnomon.indices);
-
-        // Sun buffers
-        this.buffers.sunVertex = createBuffer(gl, this.geometries.sun.vertices);
-        this.buffers.sunIndex = createIndexBuffer(gl, this.geometries.sun.indices);
-
-        // Hour line buffers
-        this.buffers.hourLines = this.geometries.hourLines.map(line => ({
-    lineVertexBuffer: createBuffer(gl, line.lineVertices),
-    lineIndexBuffer: createIndexBuffer(gl, line.lineIndices),
-    markerVertexBuffer: createBuffer(gl, line.markerVertices),
-    markerIndexBuffer: createIndexBuffer(gl, line.markerIndices),
-    hour: line.hour,
-    angle: line.angle
-}));
-
-        this.buffers.grassBlades = this.geometries.grassBlades.map(blade => ({
-    vertex: createBuffer(gl, blade.geometry.vertices),
-    index: createIndexBuffer(gl, blade.geometry.indices),
-    transform: blade
-}));
-
-        // Sky buffers
-        this.skyBuffers.vertex = createBuffer(gl, this.skyGeometry.vertices);
-        this.skyBuffers.index = createIndexBuffer(gl, this.skyGeometry.indices);
-
-        // Realistic cloud buffers
-        this.createCloudBuffers();
-        this.buffers.grassBlades = this.geometries.grassBlades.map(blade => ({
-    vertex: createBuffer(gl, blade.geometry.vertices),
-    index: createIndexBuffer(gl, blade.geometry.indices),
-    transform: blade
-}));
-    }
+            const gl = this.gl;
+    
+            // Plane buffers
+            this.buffers.planeVertex = createBuffer(gl, this.geometries.plane.vertices);
+            this.buffers.planeIndex = createIndexBuffer(gl, this.geometries.plane.indices);
+    
+            // Gnomon buffers
+            this.buffers.gnomonVertex = createBuffer(gl, this.geometries.gnomon.vertices);
+            this.buffers.gnomonIndex = createIndexBuffer(gl, this.geometries.gnomon.indices);
+    
+            // Sun buffers
+            this.buffers.sunVertex = createBuffer(gl, this.geometries.sun.vertices);
+            this.buffers.sunIndex = createIndexBuffer(gl, this.geometries.sun.indices);
+    
+            // Hour line buffers
+           createHourLinesBuffer.call(this);
+            createGrassBladesBuffer.call(this);
+            // Grass blade buffers
+            
+    
+            // Sky buffers
+            this.skyBuffers.vertex = createBuffer(gl, this.skyGeometry.vertices);
+            this.skyBuffers.index = createIndexBuffer(gl, this.skyGeometry.indices);
+    
+            // Realistic cloud buffers
+            createCloudBuffers.call(this);
+        }
 
     /**
      * Updates quality settings by recreating plane geometry if needed.
      */
     updateQualitySettings(lowQuality) {
         if (lowQuality && !this.isLowQualityLoaded) {
-            this.geometries.plane = createPlane(12, 10);
-            this.buffers.planeVertex = createBuffer(this.gl, this.geometries.plane.vertices);
-            this.buffers.planeIndex = createIndexBuffer(this.gl, this.geometries.plane.indices);
-            this.isLowQualityLoaded = true;
-        } else if (!lowQuality && this.isLowQualityLoaded) {
-            this.geometries.plane = createPlane(12, 60);
-            this.buffers.planeVertex = createBuffer(this.gl, this.geometries.plane.vertices);
-            this.buffers.planeIndex = createIndexBuffer(this.gl, this.geometries.plane.indices);
-            this.isLowQualityLoaded = false;
+                // Geometria a bassa qualità
+                this.geometries.plane = createPlane(12, 240);
+                this.buffers.planeVertex = createBuffer(this.gl, this.geometries.plane.vertices);
+                this.buffers.planeIndex = createIndexBuffer(this.gl, this.geometries.plane.indices);
+                
+                // Aggiorna i grass blades per bassa qualità (20 blades)
+                this.geometries.grassBlades = scatterGrassField(200);
+                createGrassBladesBuffer.call(this);
+                
+                this.isLowQualityLoaded = true;
+            } else if (!lowQuality && this.isLowQualityLoaded) {
+                // Geometria ad alta qualità
+                this.geometries.plane = createPlane(12, 240);
+                this.buffers.planeVertex = createBuffer(this.gl, this.geometries.plane.vertices);
+                this.buffers.planeIndex = createIndexBuffer(this.gl, this.geometries.plane.indices);
+                
+        
+                this.geometries.grassBlades = scatterGrassField(10000);
+                createGrassBladesBuffer.call(this);
+                
+                this.isLowQualityLoaded = false;
+            }
         }
-    }
 
     /**
      * Computes and renders HTML hour markers at their corresponding 3D positions.
@@ -383,6 +382,7 @@ this.renderMainScene = renderMainScene.bind(this);
         }
 
         const values = this.uiControls.getValues();
+        
         this.updateQualitySettings(values.lowQuality);
 
         if (values.autoRotate) {
@@ -391,7 +391,7 @@ this.renderMainScene = renderMainScene.bind(this);
 
         const lightData = this.calculateLighting(values);
         this.updateTimeDisplays(values, lightData.lightDirection);
-
+        this.updateHourMarkers();
         this.renderShadowPass(values, lightData);
         this.renderMainScene(values, lightData);
 
@@ -410,6 +410,7 @@ updateAutoRotate(values) {
 }
 
   calculateLighting(values) {
+    
     const azimuthRad = values.sunAngle * Math.PI / 180;
     const elevationRad = values.sunHeight * Math.PI / 180;
 
@@ -436,7 +437,8 @@ updateAutoRotate(values) {
     const lightViewMatrix = mat4();
     const lightViewProjectionMatrix = mat4();
     lookAt(lightViewMatrix, lightPos, [0, 0, 0], [0, 1, 0]);
-    const lightProjectionMatrix = createOrthographicMatrix(-25, 25, -25, 25, 1, 100);
+    const lightProjectionMatrix = createOrthographicMatrix(-30, 30, -25, 25, 0.1, 85);
+
     multiply(lightViewProjectionMatrix, lightProjectionMatrix, lightViewMatrix);
 
     return { lightDirection, sunPosition, lightViewProjectionMatrix };
@@ -465,7 +467,7 @@ setLightingUniforms(sunPosition, lightViewProjectionMatrix, values) {
     const u_lightRadiusLocation = gl.getUniformLocation(this.program, 'u_lightRadius');
 
     if (u_lightPositionLocation) gl.uniform3fv(u_lightPositionLocation, sunPosition);
-    if (u_lightIntensityLocation) gl.uniform1f(u_lightIntensityLocation, 2.0);
+    if (u_lightIntensityLocation) gl.uniform1f(u_lightIntensityLocation, 5.0);
     if (u_lightRadiusLocation) gl.uniform1f(u_lightRadiusLocation, 50.0);
 }
   /**
@@ -473,58 +475,15 @@ setLightingUniforms(sunPosition, lightViewProjectionMatrix, values) {
  */
 
  createGeometries() {
-    this.geometries.plane = createPlane(12);
-    this.geometries.gnomon = this.createGnomon();
-    this.geometries.hourLines = createHourLines();
-    // Create a larger, more detailed sun sphere
-    this.geometries.sun = createSphere(1.5, 20);
-
-    // Create sky geometry
-    this.skyGeometry = createSkyDome(this.gl);
-
-    // Create clouds geometry
-    this.geometries.clouds = createCloudsGeometry();
-
-    this.geometries.grassBlades = scatterGrassField(10000);
-    this.geometries.hourLines = createHourLines();
-
-}
-/**
- * Creates the 3D geometry of the gnomon (shadow-casting rod).
- * @returns {{vertices: Float32Array, indices: Uint16Array}} WebGL-ready gnomon mesh.
- */
- createGnomon() {
-    const height = 2;
-    const width = 0.05;
-
-    const vertices = [
-        // Base (4 points)
-        -width, 0, -width, 0, 1, 0, 0, 0,
-        width, 0, -width, 0, 1, 0, 1, 0,
-        width, 0, width, 0, 1, 0, 1, 1,
-        -width, 0, width, 0, 1, 0, 0, 1,
-        // Top (4 points)
-        -width, height, -width, 0, 1, 0, 0, 0,
-        width, height, -width, 0, 1, 0, 1, 0,
-        width, height, width, 0, 1, 0, 1, 1,
-        -width, height, width, 0, 1, 0, 0, 1
-    ];
-
-    const indices = [
-        // Sides
-        0, 1, 5, 0, 5, 4,
-        1, 2, 6, 1, 6, 5,
-        2, 3, 7, 2, 7, 6,
-        3, 0, 4, 3, 4, 7,
-        // Top
-        4, 5, 6, 4, 6, 7
-    ];
-
-    return {
-        vertices: new Float32Array(vertices),
-        indices: new Uint16Array(indices)
-    };
-}
+         this.geometries.plane = createPlane(12);
+         this.geometries.gnomon = createGnomon();
+         this.geometries.hourLines = createHourLines();
+         this.geometries.sun = createSphere(1.5, 20);
+         this.skyGeometry = createSkyDome(this.gl);
+         this.geometries.clouds = createCloudsGeometry();
+         this.geometries.grassBlades = scatterGrassField(10000);
  
+     }
+
 }
 

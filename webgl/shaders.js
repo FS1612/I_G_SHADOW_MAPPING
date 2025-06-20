@@ -1,89 +1,34 @@
 /**
- * Vertex shader:
- * - Transforms vertex positions into screen space.
- * - Computes normals and world positions for lighting.
- * - Passes texture coordinates and light direction.
- * - Computes coordinates for shadow mapping.
+ * Vertex shader migliorato:
+ * - Transforms vertex positions into screen space
+ * - Computes normals and world positions for lighting
+ * - Passes texture coordinates and light direction
+ * - Computes coordinates for shadow mapping
+ * - Implements grass wind animation
  */
 export const vertexShaderSource = `
     precision mediump float;
+    
+    // Attributes
     attribute vec3 a_position;
     attribute vec3 a_normal;
     attribute vec2 a_texCoord;
     
+    // Transformation matrices
     uniform mat4 u_modelViewProjectionMatrix;
     uniform mat4 u_modelMatrix;
     uniform mat4 u_normalMatrix;
     uniform mat4 u_lightViewProjectionMatrix;
-    uniform vec3 u_lightPosition;  // Posizione della sfera luminosa
-    uniform vec3 u_lightDirection; // Manteniamo per compatibilità
-        uniform float u_isGrass;
-uniform float u_windTime;
-uniform float u_realTime;
-    varying vec3 v_position;
-    varying vec3 v_normal;
-    varying vec2 v_texCoord;
-    varying vec3 v_lightDirection;
-    varying vec3 v_worldPos;
-    varying vec4 v_shadowCoord;
-    varying vec3 v_lightPosition;  // Passa la posizione della luce al fragment shader
+    uniform vec3 u_cameraPosition;
     
-    void main() {
-
-
-        vec3 pos = a_position;
-
-// Oscillazione solo per l'erba
-
-gl_Position = u_modelViewProjectionMatrix * vec4(pos, 1.0);
-        v_worldPos = (u_modelMatrix * vec4(pos, 1.0)).xyz;
-
-        v_position = a_position;
-        v_normal = normalize((u_normalMatrix * vec4(a_normal, 0.0)).xyz);
-        v_texCoord = a_texCoord;
-        v_lightDirection = normalize(u_lightDirection);
-        v_lightPosition = u_lightPosition;
-        
-        // Calcola coordinate shadow map
-        v_shadowCoord = u_lightViewProjectionMatrix * vec4(a_position, 1.0);
-    }
-`;
-/**
- * Fragment shader:
- * - Applies lighting and shading based on object type.
- * - Implements shadow mapping using Percentage Closer Filtering (PCF).
- * - Simulates bronze and procedural grass materials.
- */
-// Fragment shader migliorato per erba più realistica
-// Fragment shader semplificato per debug
-export const fragmentShaderSource = `
-    precision mediump float;
+    // Lighting
+    uniform vec3 u_lightPosition;
+    uniform vec3 u_lightDirection;
     
-    // Uniforms esistenti
+    // Animation
     uniform float u_isGrass;
     uniform float u_windTime;
-    uniform float u_isCloud;
-    uniform float u_opacity;
-    uniform vec3 u_color;
-    uniform float u_isGround;
-    uniform float u_isGnomon;
-    uniform float u_isHourLine;
-    uniform float u_isSphere;
-    uniform float u_enableShadows;
-    uniform vec3 u_lightDirection;
-    uniform vec3 u_lightPosition;
-    uniform float u_lightIntensity;
-    uniform float u_lightRadius;
-    uniform sampler2D u_shadowMap;
     uniform float u_realTime;
-    
-    // Nuove uniforms per il sistema atmosferico
-    uniform float u_isSky;
-    uniform float u_sunElevation;    // Elevazione del sole (0-90 gradi)
-    uniform float u_sunAzimuth;      // Azimuth del sole (0-360 gradi)
-    uniform float u_timeOfDay;       // 0.0 = mezzanotte, 0.5 = mezzogiorno, 1.0 = mezzanotte
-    uniform vec3 u_cameraPosition;
-    uniform vec3 u_cameraDirection;
     
     // Varyings
     varying vec3 v_position;
@@ -93,11 +38,103 @@ export const fragmentShaderSource = `
     varying vec3 v_worldPos;
     varying vec4 v_shadowCoord;
     varying vec3 v_lightPosition;
-    varying vec3 v_viewDirection;    // Aggiungere al vertex shader
+    varying vec3 v_viewDirection;
     
-    // Funzioni utili
-    float random(vec2 co) {
-        return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+    void main() {
+        vec3 pos = a_position;
+        
+        // Wind animation for grass
+        if (u_isGrass > 0.5) {
+            float heightFactor = (pos.y + 1.0) * 0.5; // 0-1 range
+            float windStrength = heightFactor * heightFactor; // Quadratic for more natural bend
+            
+            // Multi-frequency wind
+            float windX = sin(u_windTime + pos.x * 0.3 + pos.z * 0.2) * 0.15;
+            float windZ = cos(u_windTime * 0.8 + pos.x * 0.2 + pos.z * 0.3) * 0.1;
+            
+            // Add subtle random movement
+            float randomOffset = sin(pos.x * 12.34 + pos.z * 56.78) * 0.02;
+            
+            pos.x += (windX + randomOffset) * windStrength;
+            pos.z += (windZ + randomOffset * 0.5) * windStrength;
+        }
+        
+        // Calculate world position
+        v_worldPos = (u_modelMatrix * vec4(pos, 1.0)).xyz;
+        
+        // Standard transformations
+        gl_Position = u_modelViewProjectionMatrix * vec4(pos, 1.0);
+        
+        // Pass through attributes
+        v_position = a_position;
+        v_normal = normalize((u_normalMatrix * vec4(a_normal, 0.0)).xyz);
+        v_texCoord = a_texCoord;
+        v_lightDirection = normalize(u_lightDirection);
+        v_lightPosition = u_lightPosition;
+        v_viewDirection = normalize(u_cameraPosition - v_worldPos);
+        
+        // Shadow mapping coordinates
+        v_shadowCoord = u_lightViewProjectionMatrix * vec4(pos, 1.0);
+    }
+`;
+
+/**
+ * Fragment shader migliorato:
+ * - Improved atmospheric lighting system
+ * - Better shadow mapping with PCF
+ * - Realistic material shading
+ * - Time-based color transitions
+ * - Optimized noise functions
+ */
+export const fragmentShaderSource = `
+    precision mediump float;
+    
+    // Material flags
+    uniform float u_isGrass;
+    uniform float u_isCloud;
+    uniform float u_isGround;
+    uniform float u_isGnomon;
+    uniform float u_isHourLine;
+    uniform float u_isSphere;
+    uniform float u_isSky;
+    
+    // Material properties
+    uniform vec3 u_color;
+    uniform float u_opacity;
+    
+    // Lighting
+    uniform vec3 u_lightDirection;
+    uniform vec3 u_lightPosition;
+    uniform float u_lightIntensity;
+    uniform float u_lightRadius;
+    uniform sampler2D u_shadowMap;
+    uniform float u_enableShadows;
+    
+    // Atmosphere and time
+    uniform float u_sunElevation;
+    uniform float u_sunAzimuth;
+    uniform float u_timeOfDay;
+    uniform vec3 u_cameraPosition;
+    uniform vec3 u_cameraDirection;
+    
+    // Animation
+    uniform float u_windTime;
+    uniform float u_realTime;
+    
+    // Varyings
+    varying vec3 v_position;
+    varying vec3 v_normal;
+    varying vec2 v_texCoord;
+    varying vec3 v_lightDirection;
+    varying vec3 v_worldPos;
+    varying vec4 v_shadowCoord;
+    varying vec3 v_lightPosition;
+    varying vec3 v_viewDirection;
+    
+    // ===== UTILITY FUNCTIONS =====
+    
+    float hash(float n) {
+        return fract(sin(n) * 43758.5453);
     }
     
     float noise(vec2 p) {
@@ -105,444 +142,539 @@ export const fragmentShaderSource = `
         vec2 f = fract(p);
         f = f * f * (3.0 - 2.0 * f);
         
-        float a = random(i);
-        float b = random(i + vec2(1.0, 0.0));
-        float c = random(i + vec2(0.0, 1.0));
-        float d = random(i + vec2(1.0, 1.0));
-        
-        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        float n = i.x + i.y * 57.0;
+        return mix(
+            mix(hash(n), hash(n + 1.0), f.x),
+            mix(hash(n + 57.0), hash(n + 58.0), f.x),
+            f.y
+        );
     }
     
-    // Funzione per calcolare il colore del cielo in base al tempo
-    vec3 getSkyColor(vec3 rayDir, vec3 sunDir, float timeOfDay) {
-        float sunDot = dot(rayDir, sunDir);
-        float elevation = sunDir.y;
-        
-        // Colori base del cielo per diversi momenti
-        vec3 dayColor = vec3(0.4, 0.7, 1.0);        // Blu cielo diurno
-        vec3 sunsetColor = vec3(1.0, 0.6, 0.3);     // Arancione tramonto
-        vec3 nightColor = vec3(0.05, 0.05, 0.2);    // Blu notte
-        vec3 dawnColor = vec3(0.8, 0.5, 0.7);       // Rosa alba
-        
-        // Calcola il colore base in base al tempo
-        vec3 baseColor;
-        if (timeOfDay < 0.2) { // Notte -> Alba
-            float t = timeOfDay / 0.2;
-            baseColor = mix(nightColor, dawnColor, t);
-        } else if (timeOfDay < 0.3) { // Alba -> Giorno
-            float t = (timeOfDay - 0.2) / 0.1;
-            baseColor = mix(dawnColor, dayColor, t);
-        } else if (timeOfDay < 0.7) { // Giorno
-            baseColor = dayColor;
-        } else if (timeOfDay < 0.8) { // Giorno -> Tramonto
-            float t = (timeOfDay - 0.7) / 0.1;
-            baseColor = mix(dayColor, sunsetColor, t);
-        } else { // Tramonto -> Notte
-            float t = (timeOfDay - 0.8) / 0.2;
-            baseColor = mix(sunsetColor, nightColor, t);
+    float fbm(vec2 p) {
+        float value = 0.0;
+        float amplitude = 0.5;
+        for (int i = 0; i < 4; i++) {
+            value += amplitude * noise(p);
+            p *= 2.0;
+            amplitude *= 0.5;
         }
-        
-        // Effetto alone solare
-        float sunGlow = max(0.0, sunDot);
-        sunGlow = pow(sunGlow, 8.0);
-        
-        // Colore del sole
-        vec3 sunColor = vec3(1.0, 0.9, 0.7);
-        if (timeOfDay > 0.7 || timeOfDay < 0.3) {
-            sunColor = vec3(1.0, 0.4, 0.2); // Sole rosso all'alba/tramonto
+        return value;
+    }
+    
+    // ===== LIGHTING FUNCTIONS =====
+    
+    vec3 getSunColor(float timeOfDay) {
+        if (timeOfDay < 0.15 || timeOfDay > 0.85) {
+            return vec3(0.2, 0.3, 0.6); // Night (moonlight)
+        } else if (timeOfDay < 0.25 || timeOfDay > 0.75) {
+            return vec3(1.0, 0.6, 0.3); // Dawn/Dusk
+        } else {
+            return vec3(1.0, 0.95, 0.8); // Day
         }
-        
-        // Mescola colore base con alone solare
-        vec3 finalColor = baseColor + sunColor * sunGlow * 0.5;
-        
-        // Effetto atmosferico (scattering)
-        float horizon = abs(rayDir.y);
-        finalColor = mix(finalColor, vec3(0.8, 0.8, 0.6), pow(1.0 - horizon, 2.0) * 0.3);
-        
-        return finalColor;
     }
     
-    // Funzione per i raggi solari (god rays)
-    float getGodRays(vec3 rayDir, vec3 sunDir, vec3 worldPos) {
-        float sunDot = max(0.0, dot(rayDir, sunDir));
-        
-        // Crea raggi usando il noise
-        vec2 rayCoord = worldPos.xz * 0.01 + u_realTime * 0.1;
-        float rayNoise = noise(rayCoord) * 0.5 + noise(rayCoord * 2.0) * 0.25;
-        
-        // Intensità dei raggi basata sulla vicinanza al sole
-        float rayIntensity = pow(sunDot, 16.0);
-        
-        // Modulazione temporale per movimento
-        float timeVar = sin(u_realTime * 0.5) * 0.1 + 0.9;
-        
-        return rayIntensity * rayNoise * timeVar;
+    vec3 getAmbientColor(float timeOfDay) {
+        if (timeOfDay < 0.15 || timeOfDay > 0.85) {
+            return vec3(0.03, 0.04, 0.12); // Night
+        } else if (timeOfDay < 0.25 || timeOfDay > 0.75) {
+            return vec3(0.3, 0.2, 0.15); // Dawn/Dusk
+        } else {
+            return vec3(0.15, 0.18, 0.25); // Day
+        }
+    }
+    float random(vec2 co) {
+    return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+    float calculateShadowPCF() {
+     if (u_enableShadows < 0.5) return 1.0;
+    
+    vec3 projCoords = v_shadowCoord.xyz / v_shadowCoord.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    
+    if (projCoords.z > 1.0 || 
+        projCoords.x < 0.01 || projCoords.x > 0.99 ||
+        projCoords.y < 0.01 || projCoords.y > 0.99) {
+        return 1.0;
     }
     
-    // Funzione per l'illuminazione atmosferica
-    vec3 getAtmosphericLight(vec3 baseColor, vec3 normal, vec3 worldPos, float timeOfDay) {
-        // Luce direzionale del sole
+    float currentDepth = projCoords.z;
+    
+    // Bias semplificato ma efficace
+    vec3 normal = normalize(v_normal);
+    vec3 lightDir = normalize(-u_lightDirection);
+    float bias = 0.001 / max(dot(normal, lightDir), 0.1);
+    
+    vec2 texelSize = vec2(1.0 / 2048.0, 1.0 / 2048.0);
+    float shadow = 0.0;
+    
+    // Pattern ottimizzato 3x3 con soft comparison
+    for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+            vec2 offset = vec2(float(x), float(y)) * texelSize;
+            vec2 sampleCoord = projCoords.xy + offset;
+            
+            float pcfDepth = texture2D(u_shadowMap, sampleCoord).r;
+            
+            // Soft shadow transition
+            float depthDiff = currentDepth - pcfDepth - bias;
+            shadow += 1.0 - smoothstep(-0.0005, 0.0005, depthDiff);
+        }
+    }
+    
+    shadow /= 9.0;
+    return mix(0.25, 1.0, shadow);
+}
+    vec3 calculateLighting(vec3 baseColor, vec3 normal, vec3 worldPos) {
         vec3 sunDir = normalize(-u_lightDirection);
-        float sunLight = max(0.0, dot(normal, sunDir));
+        vec3 viewDir = normalize(v_viewDirection);
         
-        // Colore della luce solare varia con il tempo
-        vec3 sunLightColor;
-        if (timeOfDay < 0.2 || timeOfDay > 0.8) {
-            sunLightColor = vec3(0.3, 0.3, 0.6); // Luce notturna (luna)
-        } else if (timeOfDay < 0.3 || timeOfDay > 0.7) {
-            sunLightColor = vec3(1.0, 0.6, 0.3); // Luce alba/tramonto
-        } else {
-            sunLightColor = vec3(1.0, 0.95, 0.8); // Luce diurna
-        }
+        // Sun lighting
+        float NdotL = max(0.0, dot(normal, sunDir));
+        vec3 sunColor = getSunColor(u_timeOfDay);
+        vec3 diffuse = baseColor * sunColor * NdotL;
         
-        // Luce ambiente atmosferica
-        vec3 ambientColor;
-        if (timeOfDay < 0.2 || timeOfDay > 0.8) {
-            ambientColor = vec3(0.05, 0.05, 0.15); // Ambiente notturno
-        } else {
-            ambientColor = vec3(0.15, 0.15, 0.2); // Ambiente diurno
-        }
-        
-        // Point light esistente
+        // Point light
         vec3 pointLightDir = normalize(u_lightPosition - worldPos);
         float distance = length(u_lightPosition - worldPos);
-        float attenuation = 1.0;
-        if (distance <= u_lightRadius) {
-            attenuation = 1.0 / (1.0 + 0.1 * distance + 0.01 * distance * distance);
-            attenuation *= u_lightIntensity;
-        } else {
-            attenuation = 0.0;
-        }
-        float pointLight = max(0.0, dot(normal, pointLightDir)) * attenuation;
+        float attenuation = 0.0;
         
-        return baseColor * ambientColor + 
-               baseColor * sunLight * sunLightColor * 0.8 + 
-               baseColor * pointLight * vec3(1.0, 0.9, 0.7);
+        if (distance <= u_lightRadius) {
+            attenuation = u_lightIntensity / (1.0 + 0.1 * distance + 0.01 * distance * distance);
+            float pointNdotL = max(0.0, dot(normal, pointLightDir));
+            diffuse += baseColor * vec3(1.0, 0.9, 0.7) * pointNdotL * attenuation;
+        }
+        
+        // Ambient
+        vec3 ambient = baseColor * getAmbientColor(u_timeOfDay);
+        
+        // Simple specular for metallic materials
+        vec3 specular = vec3(0.0);
+        if (u_isGnomon > 0.5) {
+            vec3 reflectDir = reflect(-sunDir, normal);
+            float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
+            specular = sunColor * spec * 0.3;
+        }
+        
+        return ambient + diffuse + specular;
     }
     
-    float calculateShadow() {
-        if (u_enableShadows < 0.5) {
-            return 1.0;
+    // ===== SKY FUNCTIONS =====
+    
+    vec3 getSkyColor(vec3 rayDir, vec3 sunDir, float timeOfDay) {
+        float sunDot = dot(rayDir, sunDir);
+        float elevation = rayDir.y;
+        
+        // Base sky colors
+        vec3 zenithColor, horizonColor;
+        
+        if (timeOfDay < 0.15) {
+            zenithColor = vec3(0.05, 0.05, 0.2);
+            horizonColor = vec3(0.1, 0.1, 0.3);
+        } else if (timeOfDay < 0.25) {
+            zenithColor = vec3(0.6, 0.4, 0.8);
+            horizonColor = vec3(1.0, 0.6, 0.3);
+        } else if (timeOfDay < 0.75) {
+            zenithColor = vec3(0.3, 0.6, 1.0);
+            horizonColor = vec3(0.7, 0.9, 1.0);
+        } else if (timeOfDay < 0.85) {
+            zenithColor = vec3(0.8, 0.4, 0.6);
+            horizonColor = vec3(1.0, 0.5, 0.2);
+        } else {
+            zenithColor = vec3(0.05, 0.05, 0.2);
+            horizonColor = vec3(0.1, 0.1, 0.3);
         }
         
-        vec3 projCoords = v_shadowCoord.xyz / v_shadowCoord.w;
-        projCoords = projCoords * 0.5 + 0.5;
+        // Gradient from horizon to zenith
+        float t = max(0.0, elevation);
+        t = 1.0 - pow(1.0 - t, 2.0); // Non-linear gradient
+        vec3 skyColor = mix(horizonColor, zenithColor, t);
         
-        if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || 
-            projCoords.y < 0.0 || projCoords.y > 1.0) {
-            return 1.0;
+        // Sun halo
+        if (sunDir.y > -0.2) {
+            float sunHalo = max(0.0, sunDot);
+            sunHalo = pow(sunHalo, 8.0);
+            vec3 sunHaloColor = getSunColor(timeOfDay);
+            skyColor += sunHaloColor * sunHalo * 0.5;
         }
         
-        float closestDepth = texture2D(u_shadowMap, projCoords.xy).r;
-        float currentDepth = projCoords.z;
-        float bias = 0.005;
-        
-        return currentDepth - bias > closestDepth ? 0.3 : 1.0;
+        return skyColor;
     }
+    
+    // ===== MAIN SHADER =====
     
     void main() {
         vec3 normal = normalize(v_normal);
-        vec3 sunDir = normalize(-u_lightDirection);
         
-        // CIELO
+        // SKY DOME
         if (u_isSky > 0.5) {
             vec3 rayDir = normalize(v_worldPos - u_cameraPosition);
+            vec3 sunDir = normalize(-u_lightDirection);
             vec3 skyColor = getSkyColor(rayDir, sunDir, u_timeOfDay);
             
-            // Aggiungi raggi solari
-            float godRays = getGodRays(rayDir, sunDir, v_worldPos);
-            skyColor += vec3(1.0, 0.9, 0.7) * godRays * 0.3;
+            // Add procedural clouds
+            vec2 cloudCoord = rayDir.xz / max(rayDir.y, 0.1) * 0.5;
+            cloudCoord += u_realTime * 0.001;
             
-            // Aggiungi stelle di notte
-            if (u_timeOfDay < 0.2 || u_timeOfDay > 0.8) {
-                vec2 starCoord = rayDir.xz * 50.0;
-                float stars = 0.0;
-                for (int i = 0; i < 3; i++) {
-                    float starNoise = random(floor(starCoord + float(i) * 17.0));
-                    if (starNoise > 0.99) {
-                        stars += (starNoise - 0.99) * 100.0;
-                    }
-                    starCoord *= 2.0;
-                }
-                skyColor += vec3(1.0, 1.0, 0.9) * stars * 0.5;
+            float cloudCoverage = fbm(cloudCoord * 2.0);
+            cloudCoverage = smoothstep(0.4, 0.8, cloudCoverage);
+            
+            vec3 cloudColor = vec3(0.9, 0.9, 1.0);
+            if (u_timeOfDay < 0.25 || u_timeOfDay > 0.75) {
+                cloudColor = vec3(1.0, 0.7, 0.5); // Sunset clouds
             }
+            
+            skyColor = mix(skyColor, cloudColor, cloudCoverage * 0.7);
             
             gl_FragColor = vec4(skyColor, 1.0);
             return;
         }
         
-        // TERRENO
+        // TERRAIN
         if (u_isGround > 0.5) {
-            vec2 soilCoord = v_worldPos.xz * 0.5;
-            float soilNoise = noise(soilCoord * 8.0) * 0.1;
-            float soilDetail = noise(soilCoord * 32.0) * 0.05;
+            vec2 terrainCoord = v_worldPos.xz * 0.3;
+            float baseNoise = fbm(v_worldPos.xz * 0.5 + u_realTime * 0.02);
+            // Multi-octave terrain texture
+            float terrainNoise = fbm(terrainCoord * 4.0) * 0.3;
+            terrainNoise += fbm(terrainCoord * 16.0) * 0.1;
             
-            vec3 soilBase = vec3(0.4, 0.3, 0.2);
-            vec3 soilDark = vec3(0.3, 0.2, 0.15);
-            vec3 soilColor = mix(soilDark, soilBase, soilNoise + soilDetail + 0.5);
-            
-            float shadow = calculateShadow();
-            vec3 finalColor = getAtmosphericLight(soilColor, normal, v_worldPos, u_timeOfDay) * shadow;
+            vec3 dirtColor = vec3(0.4, 0.3, 0.2);
+            vec3 darkDirt = vec3(0.2, 0.15, 0.1);
+            vec3 terrainColor = mix(darkDirt, dirtColor, terrainNoise + 0.5);
+            terrainColor *= 0.6 + 0.4 * baseNoise;
+            float shadow = calculateShadowPCF();
+            vec3 finalColor = calculateLighting(terrainColor, normal, v_worldPos) * shadow;
             
             gl_FragColor = vec4(finalColor, 1.0);
             return;
         }
         
-        // ERBA
+        // GRASS
         if (u_isGrass > 0.5) {
-            vec3 grassBase = vec3(0.2, 0.6, 0.1);
-            vec3 grassTip = vec3(0.3, 0.8, 0.2);
+            float heightFactor = clamp((v_position.y + 1.0) * 0.5, 0.0, 1.0);
             
-            float heightFactor = (v_position.y + 1.0) * 0.5;
+            vec3 grassBase = vec3(0.2, 0.5, 0.1);
+            vec3 grassTip = vec3(0.4, 0.8, 0.2);
             vec3 grassColor = mix(grassBase, grassTip, heightFactor);
             
-            float windEffect = sin(u_windTime + v_worldPos.x * 0.1 + v_worldPos.z * 0.1) * 0.1 + 0.9;
-            grassColor *= windEffect;
+            // Wind variation
+            float windVariation = sin(u_windTime + v_worldPos.x * 0.2) * 0.1 + 0.9;
+            grassColor *= windVariation;
             
-            // Ombra soft per l'erba
-            float shadow = 1.0;
-            if (u_enableShadows > 0.5) {
-                vec3 projCoords = v_shadowCoord.xyz / v_shadowCoord.w;
-                projCoords = projCoords * 0.5 + 0.5;
-                
-                if (projCoords.z <= 1.0 && projCoords.x >= 0.0 && projCoords.x <= 1.0 && 
-                    projCoords.y >= 0.0 && projCoords.y <= 1.0) {
-                    float closestDepth = texture2D(u_shadowMap, projCoords.xy).r;
-                    float currentDepth = projCoords.z;
-                    shadow = currentDepth - 0.003 > closestDepth ? 0.6 : 1.0;
-                }
-            }
+            // Subsurface scattering approximation
+            vec3 sunDir = normalize(-u_lightDirection);
+            vec3 viewDir = normalize(v_viewDirection);
+            float facingBack = pow(1.0 - dot(normal, viewDir), 2.0);
+            float backLight = max(0.0, dot(-normal, sunDir)) * 0.3;
+            grassColor += vec3(0.3, 0.8, 0.1) * backLight * facingBack;
             
-            vec3 finalColor = getAtmosphericLight(grassColor, normal, v_worldPos, u_timeOfDay) * shadow;
-            
+            float shadow = calculateShadowPCF();
+            vec3 shadowTint = mix(vec3(0.6, 0.65, 0.7), vec3(1.0), shadow);
+            // AO: attenua in base alla distanza dal suolo (altezza) + noise
+            float groundProximity = clamp((v_worldPos.y + 1.0) * 0.5, 0.0, 1.0); // 0 in basso, 1 in alto
+            float noiseAO = fbm(v_worldPos.xz * 1.5); // leggero pattern organico
+            float ao = mix(0.7, 1.0, groundProximity); // più scuro in basso
+            ao *= mix(0.85, 1.0, noiseAO); // variazioni pseudo-random
+
+            vec3 finalColor = calculateLighting(grassColor, normal, v_worldPos) * shadow;
+
+            finalColor *= shadowTint;
+            finalColor *= ao; //
             gl_FragColor = vec4(finalColor, 1.0);
             return;
         }
         
-        // NUVOLE
+        // CLOUDS
         if (u_isCloud > 0.5) {
             vec3 cloudColor = u_color;
             
-            // Colore nuvole varia con il tempo
-            if (u_timeOfDay < 0.3 || u_timeOfDay > 0.7) {
-                cloudColor *= vec3(1.2, 0.8, 0.6); // Nuvole dorate alba/tramonto
+            // Time-based cloud coloring
+            if (u_timeOfDay < 0.25 || u_timeOfDay > 0.75) {
+                cloudColor *= vec3(1.2, 0.8, 0.6);
             }
             
-            vec3 finalColor = getAtmosphericLight(cloudColor, normal, v_worldPos, u_timeOfDay);
+            vec3 finalColor = calculateLighting(cloudColor, normal, v_worldPos);
             gl_FragColor = vec4(finalColor, u_opacity);
             return;
         }
         
-        // SFERA LUMINOSA (sole)
+        // LIGHT SPHERE (Sun)
         if (u_isSphere > 0.5) {
-            vec3 glowColor = vec3(1.0, 0.9, 0.7);
+            vec3 sunColor = getSunColor(u_timeOfDay);
+            vec3 finalColor = sunColor * u_lightIntensity * 2.0;
             
-            // Colore varia con il tempo
-            if (u_timeOfDay < 0.3 || u_timeOfDay > 0.7) {
-                glowColor = vec3(1.0, 0.6, 0.3); // Sole rosso alba/tramonto
-            }
-            
-            vec3 finalColor = glowColor * u_lightIntensity;
+            // Add corona effect
             float distFromCenter = length(v_position);
-            float glow = 1.0 - smoothstep(0.0, 1.0, distFromCenter);
-            finalColor += glowColor * glow * 0.5;
+            float corona = 1.0 - smoothstep(0.8, 1.2, distFromCenter);
+            finalColor += sunColor * corona * 0.5;
             
             gl_FragColor = vec4(finalColor, 1.0);
             return;
         }
         
-        // GNOMONE
-        if (u_isGnomon > 0.5) {
-            float metallic = sin(v_position.y * 25.0) * 0.15 + 0.85;
-            vec3 bronzeBase = vec3(0.8, 0.6, 0.2);
-            vec3 bronzeHighlight = vec3(0.9, 0.75, 0.3);
-            vec3 bronzeColor = mix(bronzeBase, bronzeHighlight, metallic);
-            
-            float shadow = calculateShadow();
-            vec3 finalColor = getAtmosphericLight(bronzeColor, normal, v_worldPos, u_timeOfDay) * shadow;
-            
-            gl_FragColor = vec4(finalColor, 1.0);
-            return;
-        }
-        
-        // LINEE ORARIE
-        if (u_isHourLine > 0.5) {
-            vec3 lineColor = vec3(0.9, 0.9, 0.8);
-            float shadow = calculateShadow();
-            vec3 finalColor = getAtmosphericLight(lineColor, normal, v_worldPos, u_timeOfDay) * shadow;
-            
-            gl_FragColor = vec4(finalColor, 1.0);
-            return;
-        }
-        
-        // OGGETTI GENERICI
-        float shadow = calculateShadow();
-        vec3 finalColor = getAtmosphericLight(u_color, normal, v_worldPos, u_timeOfDay) * shadow;
-        gl_FragColor = vec4(finalColor, 1.0);
-    }
-`;
-/**
- * Shadow map vertex shader:
- * - Projects geometry into light's view to generate a depth texture.
- */
-export const shadowVertexShaderSource = `
-    precision mediump float;
-    attribute vec3 a_position; // Object vertex position
-    uniform mat4 u_lightViewProjectionMatrix; // Light's view-projection matrix
+        // GNOMON (Bronze material)
+          if (u_isGnomon > 0.5) {
+    // Base bronzo scuro e riflessi
+    vec3 bronzeBase = vec3(0.25, 0.18, 0.09);
+    vec3 bronzeHighlight = vec3(0.5, 0.35, 0.2);
+
+    // Noise per variazione superficiale
+    float roughPattern = fbm(v_worldPos.xz * 3.0 + v_worldPos.yz * 2.0);
+    vec3 bronzeColor = mix(bronzeBase, bronzeHighlight, roughPattern * 0.6);
+
+    // ===== LINEE INCISIONE (tipo decorazione o giunzione saldata) =====
+    float freq = 0.12;        // distanza tra "blocchi"
+    float width = 0.006;      // spessore linea
+    float hLine = smoothstep(freq - width, freq, fract(v_worldPos.y / freq));
+    hLine *= smoothstep(0.0, width, 1.0 - fract(v_worldPos.y / freq));
+
+    float vLine = smoothstep(freq - width, freq, fract(v_worldPos.x / freq));
+    vLine *= smoothstep(0.0, width, 1.0 - fract(v_worldPos.x / freq));
+
+    float grid = min(hLine, vLine);  
+
+    vec3 grooveColor = vec3(1.0); // colore delle incisioni (bianco o chiaro)
+    bronzeColor = mix(grooveColor, bronzeColor, grid);
+    // ====================================================================
+
+    // Normali e luce
+    vec3 N = normalize(v_normal);
+    vec3 L = normalize(-u_lightDirection);
+    vec3 V = normalize(v_viewDirection);
+    vec3 R = reflect(-L, N);
+
+    float NdotL = max(dot(N, L), 0.0);
+    float spec = pow(max(dot(V, R), 0.0), 24.0);
+
+    vec3 specular = bronzeHighlight * spec * 0.5;
+    vec3 ambient = bronzeBase * getAmbientColor(u_timeOfDay) * 0.4;
+
+    float shadow = calculateShadowPCF();
+    shadow = mix(0.3, 1.0, shadow);
     
-    void main() {
-        gl_Position = u_lightViewProjectionMatrix * vec4(a_position, 1.0);
+    vec3 finalColor = (ambient + bronzeColor * NdotL + specular) ;
+    finalColor = clamp(finalColor, 0.0, 0.95);
+
+    gl_FragColor = vec4(finalColor, 1.0);
+    return;
+}
+
+
+        
+        // HOUR LINES
+        if (u_isHourLine > 0.5) {
+    vec3 lineColor = vec3(0.95, 0.95, 0.9);     // Slightly warmer white
+    
+    // Add subtle time-based tinting
+    if (u_timeOfDay < 0.25 || u_timeOfDay > 0.75) {
+        lineColor *= vec3(1.0, 0.9, 0.8);       // Warmer during dawn/dusk
+    }
+    
+    float shadow = calculateShadowPCF();
+    vec3 finalColor = calculateLighting(lineColor, normal, v_worldPos) * shadow;
+    
+    gl_FragColor = vec4(finalColor, 1.0);
+    return;
+}
+        
+        // DEFAULT MATERIAL
+        float shadow = calculateShadowPCF();
+        vec3 finalColor = calculateLighting(u_color, normal, v_worldPos) * shadow;
+        gl_FragColor = vec4(finalColor, 1.0);
     }
 `;
 
 /**
- * Shadow map fragment shader:
- * - Outputs depth to red channel (used as a shadow map).
+ * Shadow mapping shaders (unchanged - already optimal)
  */
+export const shadowVertexShaderSource = `
+    precision mediump float;
+
+// Attributi
+attribute vec3 a_position;
+
+// Uniform per proiezione
+uniform mat4 u_lightViewProjectionMatrix;
+
+// Uniform per erba animata
+uniform float u_isGrass;
+uniform float u_windTime;
+
+void main() {
+    vec3 pos = a_position;
+
+    // Applica animazione vento solo se è erba
+    if (u_isGrass > 0.5) {
+        float heightFactor = (pos.y + 1.0) * 0.5; // Range 0–1
+        float windStrength = heightFactor * heightFactor;
+
+        float windX = sin(u_windTime + pos.x * 0.3 + pos.z * 0.2) * 0.15;
+        float windZ = cos(u_windTime * 0.8 + pos.x * 0.2 + pos.z * 0.3) * 0.1;
+        float randomOffset = sin(pos.x * 12.34 + pos.z * 56.78) * 0.02;
+
+        pos.x += (windX + randomOffset) * windStrength;
+        pos.z += (windZ + randomOffset * 0.5) * windStrength;
+    }
+
+    gl_Position = u_lightViewProjectionMatrix * vec4(pos, 1.0);
+}
+`;
+
 export const shadowFragmentShaderSource = `
     precision mediump float;
     
     void main() {
-        gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 1.0); // Encodes depth only
+        gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 1.0);
     }
 `;
-// Sky dome vertex shader
+
+/**
+ * Sky dome shaders migliorati
+ */
 export const skyVertexShaderSource = `
     precision mediump float;
     attribute vec3 a_position;
     uniform mat4 u_modelViewProjectionMatrix;
+    uniform mat4 u_modelMatrix;
+    uniform vec3 u_cameraPosition;
+    
     varying vec3 v_position;
+    varying vec3 v_worldPos;
+    varying vec3 v_viewDirection;
     
     void main() {
         v_position = a_position;
+        v_worldPos = (u_modelMatrix * vec4(a_position, 1.0)).xyz;
+        v_viewDirection = normalize(v_worldPos - u_cameraPosition);
+        
         gl_Position = u_modelViewProjectionMatrix * vec4(a_position, 1.0);
     }
 `;
 
-// Sky dome fragment shader
-// Sky dome fragment shader migliorato per nuvole più visibili
 export const skyFragmentShaderSource = `
     precision mediump float;
+    
     varying vec3 v_position;
+    varying vec3 v_worldPos;
+    varying vec3 v_viewDirection;
+    
     uniform vec3 u_lightDirection;
     uniform float u_time;
+    uniform float u_timeOfDay;
     
-    // Funzione di noise per le nuvole
-    float random(vec2 st) {
-        return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+    // Optimized noise functions
+    float hash21(vec2 p) {
+        p = fract(p * vec2(234.34, 435.345));
+        p += dot(p, p + 34.23);
+        return fract(p.x * p.y);
     }
-
-    float noise(vec2 st) {
-        vec2 i = floor(st);
-        vec2 f = fract(st);
+    
+    float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
         
-        float a = random(i);
-        float b = random(i + vec2(1.0, 0.0));
-        float c = random(i + vec2(0.0, 1.0));
-        float d = random(i + vec2(1.0, 1.0));
+        return mix(
+            mix(hash21(i + vec2(0,0)), hash21(i + vec2(1,0)), f.x),
+            mix(hash21(i + vec2(0,1)), hash21(i + vec2(1,1)), f.x),
+            f.y
+        );
+    }
+    
+    float fbm(vec2 p, int octaves) {
+        float value = 0.0;
+        float amplitude = 0.5;
         
-        vec2 u = f * f * (3.0 - 2.0 * f);
+        for (int i = 0; i < 6; i++) {
+            if (i >= octaves) break;
+            value += amplitude * noise(p);
+            p *= 2.0;
+            amplitude *= 0.5;
+        }
         
-        return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+        return value;
+    }
+    
+    vec3 getSkyGradient(float elevation, float timeOfDay) {
+        vec3 zenith, horizon;
+        
+        // Time-based sky colors
+        if (timeOfDay < 0.2) {
+            zenith = vec3(0.02, 0.03, 0.15);
+            horizon = vec3(0.1, 0.1, 0.2);
+        } else if (timeOfDay < 0.3) {
+            zenith = vec3(0.6, 0.4, 0.8);
+            horizon = vec3(1.0, 0.6, 0.3);
+        } else if (timeOfDay < 0.7) {
+            zenith = vec3(0.3, 0.6, 1.0);
+            horizon = vec3(0.7, 0.9, 1.0);
+        } else if (timeOfDay < 0.8) {
+            zenith = vec3(0.8, 0.4, 0.6);
+            horizon = vec3(1.0, 0.5, 0.2);
+        } else {
+            zenith = vec3(0.02, 0.03, 0.15);
+            horizon = vec3(0.1, 0.1, 0.2);
+        }
+        
+        float t = pow(max(0.0, elevation), 0.7);
+        return mix(horizon, zenith, t);
     }
     
     void main() {
-        vec3 viewDir = normalize(v_position);
+        vec3 viewDir = normalize(v_viewDirection);
         vec3 lightDir = normalize(-u_lightDirection);
         
-        float skyHeight = max(0.0, viewDir.y);
-        float timeOfDay = clamp((lightDir.y + 0.3) * 1.2, 0.0, 1.0);
+        float elevation = max(0.0, viewDir.y);
+        vec3 skyColor = getSkyGradient(elevation, u_timeOfDay);
         
-        // Colori del cielo più dinamici
-        vec3 nightSky = vec3(0.02, 0.03, 0.15);
-        vec3 dawnSky = vec3(1.0, 0.6, 0.3);
-        vec3 daySky = vec3(0.4, 0.7, 1.0);
-        vec3 sunsetSky = vec3(1.0, 0.4, 0.2);
+        // Enhanced sun rendering
+        float sunDistance = length(viewDir - lightDir);
         
-        vec3 skyColor;
-        if (timeOfDay < 0.2) {
-            skyColor = mix(nightSky, dawnSky, timeOfDay / 0.2);
-        } else if (timeOfDay < 0.8) {
-            skyColor = mix(dawnSky, daySky, (timeOfDay - 0.2) / 0.6);
-        } else {
-            skyColor = mix(daySky, sunsetSky, (timeOfDay - 0.8) / 0.2);
+        if (lightDir.y > -0.1) {
+            // Sun disc
+            if (sunDistance < 0.025) {
+                vec3 sunColor = vec3(1.0, 0.9, 0.7);
+                if (u_timeOfDay < 0.3 || u_timeOfDay > 0.7) {
+                    sunColor = vec3(1.0, 0.6, 0.3);
+                }
+                
+                float sunIntensity = 1.0 - smoothstep(0.0, 0.025, sunDistance);
+                skyColor = mix(skyColor, sunColor * 3.0, sunIntensity);
+            }
+            // Sun halo
+            else if (sunDistance < 0.15) {
+                vec3 haloColor = vec3(1.0, 0.8, 0.6);
+                float haloIntensity = pow(1.0 - (sunDistance / 0.15), 2.0) * 0.6;
+                skyColor = mix(skyColor, haloColor, haloIntensity);
+            }
         }
         
-        // Gradiente verticale più naturale
-        skyColor = mix(skyColor * 0.6, skyColor, pow(skyHeight, 0.7));
-        
-        // SOLE COME SORGENTE LUMINOSA (NON ILLUMINATO)
-        float sunDistance = distance(viewDir, lightDir);
-        float sunSize = 0.03; // Dimensione del sole
-        float sunGlow = 0.15;  // Alone del sole
-        
-        // Disco solare - EMISSIVO, non illuminato
-        if (sunDistance < sunSize && lightDir.y > -0.1) {
-            // Il sole emette luce propria, colore più intenso
-            vec3 sunColor = vec3(1.0, 0.9, 0.7) * 2.0; // Intensità aumentata
-            float sunIntensity = 1.0 - (sunDistance / sunSize);
-            sunIntensity = pow(sunIntensity, 0.5); // Bordi più morbidi
-            skyColor = mix(skyColor, sunColor, sunIntensity);
+        // Improved cloud system
+        if (elevation > 0.05) {
+            vec2 cloudUV = vec2(
+                atan(viewDir.x, viewDir.z) / 6.28318,
+                acos(elevation) / 3.14159
+            ) * 3.0;
+            
+            cloudUV += u_time * 0.002;
+            
+            float cloudDensity = fbm(cloudUV, 4);
+            cloudDensity = smoothstep(0.35, 0.75, cloudDensity);
+            
+            // Cloud colors based on time
+            vec3 cloudColor;
+            if (u_timeOfDay < 0.3 || u_timeOfDay > 0.7) {
+                cloudColor = vec3(0.8, 0.4, 0.3); // Dawn/dusk
+            } else {
+                cloudColor = vec3(0.95, 0.95, 1.0); // Day
+            }
+            
+            // Cloud lighting
+            float cloudLight = max(0.3, dot(viewDir, lightDir));
+            cloudColor *= cloudLight;
+            
+            skyColor = mix(skyColor, cloudColor, cloudDensity * 0.8);
         }
-        
-        // Alone del sole più pronunciato
-        else if (sunDistance < sunGlow && lightDir.y > -0.1) {
-            vec3 glowColor = vec3(1.0, 0.8, 0.6) * 1.5;
-            float glowIntensity = pow(1.0 - (sunDistance / sunGlow), 2.0) * 0.8;
-            skyColor = mix(skyColor, glowColor, glowIntensity);
-        }
-        
-        // NUVOLE PROCEDURALI MIGLIORATE
-        // Usa coordinate sferiche più stabili invece di divisione per viewDir.y
-        vec2 cloudCoord = vec2(
-            atan(viewDir.x, viewDir.z) / 6.28318, // angolo orizzontale normalizzato
-            acos(max(viewDir.y, 0.0)) / 3.14159   // angolo verticale normalizzato
-        );
-        
-        // Scala le coordinate e aggiungi movimento più visibile
-        cloudCoord = cloudCoord * 4.0 + u_time * 0.0001; // Movimento più veloce
-        
-        float cloudNoise = 0.0;
-        
-        // Nuvole multistrato con pesi ottimizzati
-        cloudNoise += noise(cloudCoord * 1.5) * 0.5;    // Layer principale
-        cloudNoise += noise(cloudCoord * 3.0) * 0.3;    // Dettagli medi
-        cloudNoise += noise(cloudCoord * 8.0) * 0.2;    // Dettagli fini
-        
-        // Soglia ancora più bassa per nuvole più visibili
-        cloudNoise = smoothstep(0.15, 0.55, cloudNoise); // Soglia ridotta ulteriormente
-        
-        // Colore delle nuvole con MAGGIORE CONTRASTO
-        vec3 cloudColorBase, cloudColorHigh;
-        
-        if (timeOfDay < 0.3) {
-            // Notte/Alba - nuvole più scure per contrasto
-            cloudColorBase = vec3(0.2, 0.2, 0.3);
-            cloudColorHigh = vec3(0.4, 0.4, 0.5);
-        } else if (timeOfDay < 0.7) {
-            // Giorno - nuvole bianche brillanti
-            cloudColorBase = vec3(0.9, 0.9, 0.95);
-            cloudColorHigh = vec3(1.2, 1.2, 1.2); // Sovra-esposto per contrasto
-        } else {
-            // Tramonto - nuvole colorate
-            cloudColorBase = vec3(0.8, 0.4, 0.3);
-            cloudColorHigh = vec3(1.0, 0.7, 0.5);
-        }
-        
-        vec3 cloudColor = mix(cloudColorBase, cloudColorHigh, cloudNoise);
-
-        
-        // Ombreggiatura meno aggressiva per mantenere visibilità
-        float cloudShadow = mix(0.6, 1.0, timeOfDay); // Era 0.3, ora 0.6
-        cloudColor *= cloudShadow;
-        
-        // Maschera per l'altezza meno restrittiva
-        float heightMask = smoothstep(-0.1, 0.6, skyHeight); // Permette nuvole anche verso l'orizzonte
-        cloudNoise = smoothstep(0.12, 0.5, cloudNoise);
-
-        
-        // Applica le nuvole con intensità aumentata
-        skyColor = mix(skyColor, cloudColor, cloudNoise * 0.9); // Intensità aumentata
         
         gl_FragColor = vec4(skyColor, 1.0);
     }

@@ -297,5 +297,38 @@ export function createCloudsGeometry() {
 
     return clouds;
 }
+ export function createGnomon() {
+        const height = 2;
+        const width = 0.05;
+
+        const vertices = [
+            // Base (4 points)
+            -width, 0, -width, 0, 1, 0, 0, 0,
+            width, 0, -width, 0, 1, 0, 1, 0,
+            width, 0, width, 0, 1, 0, 1, 1,
+            -width, 0, width, 0, 1, 0, 0, 1,
+            // Top (4 points)
+            -width, height, -width, 0, 1, 0, 0, 0,
+            width, height, -width, 0, 1, 0, 1, 0,
+            width, height, width, 0, 1, 0, 1, 1,
+            -width, height, width, 0, 1, 0, 0, 1
+        ];
+
+        const indices = [
+            // Sides
+            0, 1, 5, 0, 5, 4,
+            1, 2, 6, 1, 6, 5,
+            2, 3, 7, 2, 7, 6,
+            3, 0, 4, 3, 4, 7,
+            // Top
+            4, 5, 6, 4, 6, 7
+        ];
+
+        return {
+            vertices: new Float32Array(vertices),
+            indices: new Uint16Array(indices)
+        };
+    }
+
 
 

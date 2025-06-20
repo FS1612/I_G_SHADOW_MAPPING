@@ -106,7 +106,7 @@ export function renderGrassBlades(projectionMatrix, viewMatrix, lightDirection, 
             blade.index,
             transform.geometry.indices.length,
             grassColor,
-            false, false, false, false
+            false, false, false, false,true
         );
         
         if (shouldLog) {
