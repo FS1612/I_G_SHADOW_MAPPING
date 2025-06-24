@@ -1,6 +1,9 @@
 import { SundialApp } from './app/sundial.js';
 
-// Aggiungi indicatore visuale del sole
+/**
+ * Creates a visual indicator representing the sun on screen.
+ * @returns {HTMLDivElement} The created sun indicator element.
+ */
 function createSunIndicator() {
     const sunDiv = document.createElement('div');
     sunDiv.className = 'sun-indicator';
@@ -9,7 +12,12 @@ function createSunIndicator() {
     return sunDiv;
 }
 
-// Aggiorna la classe CSS del display del tempo
+/**
+ * Updates the CSS class of the time display element to reflect the time of day.
+ * Applies different styles for day, night, and sunrise/sunset hours.
+ * 
+ * @param {string} timeString - The current time in HH:mm format.
+ */
 function updateTimeDisplayStyle(timeString) {
     const timeDisplay = document.getElementById('timeDisplay');
     const hour = parseInt(timeString.split(':')[0]);
@@ -25,12 +33,18 @@ function updateTimeDisplayStyle(timeString) {
     }
 }
 
-// Aggiorna posizione indicatore sole
+
+/**
+ * Updates the screen position and appearance of the sun indicator element.
+ * 
+ * @param {number} azimuth - The sun's azimuth angle in degrees.
+ * @param {number} elevation - The sun's elevation angle in degrees.
+ */
 function updateSunIndicator(azimuth, elevation) {
     const sunIndicator = document.getElementById('sunIndicator');
     if (!sunIndicator) return;
     
-    // Converti angoli in posizione schermo
+    // Convert angles into screen coordinates
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight / 2;
     
@@ -44,22 +58,26 @@ function updateSunIndicator(azimuth, elevation) {
     sunIndicator.style.left = (x - 20) + 'px';
     sunIndicator.style.top = (y - 20) + 'px';
     
-    // Cambia colore in base all'elevazione
+    // Adjust brightness based on elevation angle
     const brightness = Math.max(0.3, elevationRad / (Math.PI / 2));
     sunIndicator.style.opacity = brightness;
 }
 
-// Inizializza applicazione
+
+/**
+ * Initializes the Sundial application and UI enhancements.
+ * Sets up DOM listeners and handles errors gracefully.
+ */
 document.addEventListener('DOMContentLoaded', () => {
     try {
         console.log('Starting enhanced sundial application...');
         
-        // Crea indicatore sole
+        // Create visual sun indicator
         createSunIndicator();
         
         const app = new SundialApp();
         
-        // Aggiungi listener per aggiornamenti
+        // Listen for updates and apply visual changes
         document.addEventListener('sundialUpdate', (event) => {
             updateTimeDisplayStyle(event.detail.time);
             updateSunIndicator(event.detail.azimuth, event.detail.elevation);

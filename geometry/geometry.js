@@ -2,9 +2,11 @@
 import { calculateSundialHourAngles } from '../utils/astronomy.js';
 
 /**
- * Creates a flat square ground plane made of triangle tiles.
- * @param {number} size - The total width/length of the plane.
- * @returns {{vertices: Float32Array, indices: Uint16Array}} WebGL-ready geometry data.
+ * Creates a flat square plane made of triangle tiles, centered at the origin.
+ *
+ * @param {number} size - Half-length of the plane; total width is size * 2.
+ * @param {number} [segments=60] - Number of subdivisions along each axis.
+ * @returns {{vertices: Float32Array, indices: Uint16Array}} WebGL-ready vertex and index data.
  */
 export function createPlane(size, segments = 60) {
     
@@ -40,8 +42,9 @@ export function createPlane(size, segments = 60) {
 }
 
 /**
- * Creates radial hour lines and optional marker blocks for each solar hour.
- * Based on sundial hour angles calculated from a fixed latitude.
+ * Generates radial hour lines and optional marker blocks based on sundial hour angles.
+ * Each hour line is a thin ribbon extending outward from the gnomon, and optionally includes a 3D marker block.
+ *
  * @returns {Array<{
  *   lineVertices: Float32Array,
  *   lineIndices: Uint16Array,
@@ -49,7 +52,7 @@ export function createPlane(size, segments = 60) {
  *   markerIndices: Uint16Array,
  *   hour: number,
  *   angle: number
- * }>} Array of geometry data for each hour line.
+ * }>} Array of hour line geometry data.
  */
 export function createHourLines() {
     const ROME_LATITUDE = 41.9 * Math.PI / 180;
@@ -132,11 +135,18 @@ export function createHourLines() {
 
     return lines;
 }
+/**
+ * Creates a UV-mapped sphere geometry with normals for shading.
+ *
+ * @param {number} [radius=1.0] - Radius of the sphere.
+ * @param {number} [segments=16] - Number of vertical and horizontal subdivisions.
+ * @returns {{vertices: Float32Array, indices: Uint16Array}} WebGL-ready geometry.
+ */
 export function createSphere(radius = 1.0, segments = 16) {
     const vertices = [];
     const indices = [];
 
-    // Genera vertici
+    // Generate vertices
     for (let lat = 0; lat <= segments; lat++) {
         const theta = lat * Math.PI / segments;
         const sinTheta = Math.sin(theta);
@@ -160,7 +170,7 @@ export function createSphere(radius = 1.0, segments = 16) {
         }
     }
 
-    // Genera indici
+    // Generate indices
     for (let lat = 0; lat < segments; lat++) {
         for (let lon = 0; lon < segments; lon++) {
             const first = (lat * (segments + 1)) + lon;
@@ -176,6 +186,13 @@ export function createSphere(radius = 1.0, segments = 16) {
         indices: new Uint16Array(indices)
     };
 }
+/**
+ * Generates the geometry for a single curved grass blade.
+ *
+ * @param {number} [segments=4] - Number of vertical segments in the blade.
+ * @param {number} [height=1.0] - Height of the blade.
+ * @returns {{vertices: Float32Array, indices: Uint16Array}} Geometry of a blade mesh.
+ */
 export function createGrassBladeGeometry(segments = 4, height = 1.0) {
     const vertices = [];
     const indices = [];
@@ -183,11 +200,11 @@ export function createGrassBladeGeometry(segments = 4, height = 1.0) {
     for (let i = 0; i <= segments; i++) {
         const y = (i / segments) * height;
         const width = (1 - Math.pow(i / segments, 1.5)) * 0.05;
-        const bend = 0.2 * Math.pow(i / segments, 2); // leggera curvatura
+        const bend = 0.2 * Math.pow(i / segments, 2); // slight curvature
 
-        // Vertice sinistro e destro con piega verso una direzione
-        vertices.push(-width + bend, y, 0, 0, 1, 0, i / segments, 0); // sinistra
-        vertices.push(+width + bend, y, 0, 0, 1, 0, i / segments, 1); // destra
+        // Left and right vertex with curvature
+        vertices.push(-width + bend, y, 0, 0, 1, 0, i / segments, 0); // sx
+        vertices.push(+width + bend, y, 0, 0, 1, 0, i / segments, 1); // dx
 
         if (i < segments) {
             const base = i * 2;
@@ -201,7 +218,19 @@ export function createGrassBladeGeometry(segments = 4, height = 1.0) {
         indices: new Uint16Array(indices)
     };
 }
-
+/**
+ * Randomly distributes individual grass blades across a square field.
+ *
+ * @param {number} [count=600] - Number of grass blades.
+ * @param {number} [areaSize=23] - Side length of the field (centered at origin).
+ * @returns {Array<{
+ *   position: [number, number, number],
+ *   rotation: number,
+ *   scale: number,
+ *   height: number,
+ *   geometry: { vertices: Float32Array, indices: Uint16Array }
+ * }>} Array of grass blade transforms and geometry.
+ */
 export function scatterGrassField(count = 600, areaSize = 23) {
     const blades = [];
 
@@ -211,35 +240,45 @@ export function scatterGrassField(count = 600, areaSize = 23) {
         const angle = Math.random() * Math.PI * 2;
         
         const scale = 0.4 + Math.random() * 0.4;
-        const height = 0.5 + Math.random(); // 👈 altezza casuale
+        const height = 0.5 + Math.random(); // random height
 
         blades.push({
             position: [x, 0, z],
             rotation: angle,
             scale: scale,
-            height: height, // 👈 utile per animazioni nel vento
+            height: height, 
             geometry: createGrassBladeGeometry(4, height)
         });
     }
 
     return blades;
 }
+/**
+ * Constructs a cloud from multiple scaled and positioned sphere parts.
+ * Returns the component parts that make up one volumetric cloud.
+ *
+ * @returns {Array<{
+ *   geometry: { vertices: Float32Array, indices: Uint16Array },
+ *   localPosition: [number, number, number],
+ *   scale: number
+ * }>} Array of cloud parts used for rendering.
+ */
 
 export function createStructuredCloudGeometry() {
     const cloudParts = [];
 
     const baseY = 0;
-    const zOffset = 0.02; // quasi piatte
+    const zOffset = 0.02; // nearly flat
 
 
-    // Centro grande
+    // Central lobe
     cloudParts.push({
         geometry: createSphere(1.2, 24),
         localPosition: [0, baseY, 0],
         scale: 1.0,
     });
 
-    // Lati (grandi lobi)
+    // Side lobes
     cloudParts.push({
         geometry: createSphere(1.0, 24),
         localPosition: [-1.4, baseY - 0.1, zOffset],
@@ -251,7 +290,7 @@ export function createStructuredCloudGeometry() {
         scale: 0.8,
     });
 
-    // Lobi esterni piccoli
+    // Small outer lobes
     cloudParts.push({
         geometry: createSphere(0.8, 24),
         localPosition: [-2.3, baseY - 0.25, 0],
@@ -263,7 +302,7 @@ export function createStructuredCloudGeometry() {
         scale: 0.65,
     });
 
-    // Gobba superiore
+    // Top bulge
     cloudParts.push({
         geometry: createSphere(0.7, 24),
         localPosition: [0, baseY + 0.9, 0],
@@ -272,20 +311,34 @@ export function createStructuredCloudGeometry() {
 
     return cloudParts;
 }
+/**
+ * Generates multiple cloud objects with randomized positions, shading, and scale.
+ * Each cloud is composed of several spherical parts (from `createStructuredCloudGeometry`).
+ *
+ * @returns {Array<{
+ *   parts: ReturnType<typeof createStructuredCloudGeometry>,
+ *   position: [number, number, number],
+ *   baseScale: number,
+ *   speed: number,
+ *   grayIntensity: number,
+ *   warmth: number,
+ *   wobblePhase: number
+ * }>} Array of full cloud objects with metadata for animation and shading.
+ */
 
 export function createCloudsGeometry() {
     const clouds = [];
 
-    // Crea 3-4 nuvole sparse in posizioni diverse
+     // Create 3-4 clouds scattered in the sky
     for (let i = 0; i < 4; i++) {
         const position = [
-            -10 + i * 7, // X distribuito
-            8 + Math.random(), // Y (altezza cielo)
+            -10 + i * 7, // X distributed
+            8 + Math.random(), // Y random
             -4 + Math.random() * 8 // Z
         ];
 
         clouds.push({
-            parts: createStructuredCloudGeometry(), // ✅ chiamata corretta
+            parts: createStructuredCloudGeometry(), 
             position: position,
             baseScale: 1.0 + Math.random() * 0.4,
             speed: 0.2 + Math.random() * 0.5,
@@ -297,6 +350,12 @@ export function createCloudsGeometry() {
 
     return clouds;
 }
+/**
+ * Creates a vertical rectangular prism (gnomon) to cast the shadow in the sundial.
+ *
+ * @returns {{vertices: Float32Array, indices: Uint16Array}} Geometry of the gnomon.
+ */
+
  export function createGnomon() {
         const height = 2;
         const width = 0.05;

@@ -18,7 +18,19 @@ import { renderForShadowMap } from './renderForShadowMap.js';
 import { createCloudBuffers } from '../Buffers/createCloudBuffers.js';
 import { createGrassBladesBuffer } from '../Buffers/createGrassBladesBuffer.js';
 import { createHourLinesBuffer } from '../Buffers/createHourLinesBuffer.js';
+/**
+ * Main class for the WebGL-based 3D Sundial application.
+ * 
+ * This application simulates a dynamic sundial with realistic lighting,
+ * animated shadows, grass, clouds, sky dome, and hour markers.
+ * It manages scene initialization, rendering loop, user controls,
+ * shadow mapping, and UI overlays.
+ */
 export class SundialApp {
+    /**
+     * Initializes the main app instance, binding internal methods and starting the setup process.
+     * Binds render and shadow methods to `this` for reuse and calls the `init()` method.
+     */
     constructor() {
         /** @type {HTMLCanvasElement} */
         this.canvas = document.getElementById('canvas');
@@ -54,9 +66,12 @@ export class SundialApp {
         this.frameCount = 0;
         this.lastFpsUpdate = 0;
         this.renderShadowPass = renderShadowPass.bind(this);
-this.renderForShadowMap = renderForShadowMap.bind(this);
-this.renderMainScene = renderMainScene.bind(this);
-
+    this.renderForShadowMap = renderForShadowMap.bind(this);
+        this.renderMainScene = renderMainScene.bind(this);
+        /**
+     * Initializes WebGL context, shaders, geometry, buffers, controls, and starts the render loop.
+     * Also handles error logging during startup.
+     */
         this.init();
     }
 
@@ -235,7 +250,7 @@ this.renderMainScene = renderMainScene.bind(this);
 
 
     /**
-     * Updated createBuffers method to handle realistic clouds
+     * Creates WebGL buffers for all geometries including structured cloud rendering.
      */
     createBuffers() {
             const gl = this.gl;
@@ -288,7 +303,7 @@ this.renderMainScene = renderMainScene.bind(this);
                 this.buffers.planeIndex = createIndexBuffer(this.gl, this.geometries.plane.indices);
                 
         
-                this.geometries.grassBlades = scatterGrassField(10000);
+                this.geometries.grassBlades = scatterGrassField(2000);
                 createGrassBladesBuffer.call(this);
                 
                 this.isLowQualityLoaded = false;
@@ -481,7 +496,7 @@ setLightingUniforms(sunPosition, lightViewProjectionMatrix, values) {
          this.geometries.sun = createSphere(1.5, 20);
          this.skyGeometry = createSkyDome(this.gl);
          this.geometries.clouds = createCloudsGeometry();
-         this.geometries.grassBlades = scatterGrassField(10000);
+         this.geometries.grassBlades = scatterGrassField(2000);
  
      }
 

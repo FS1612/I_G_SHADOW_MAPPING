@@ -1,10 +1,10 @@
 /**
- * Vertex shader migliorato:
- * - Transforms vertex positions into screen space
+ * Vertex shader (main scene):
+ * - Applies model, view, and projection transformations
  * - Computes normals and world positions for lighting
- * - Passes texture coordinates and light direction
- * - Computes coordinates for shadow mapping
- * - Implements grass wind animation
+ * - Passes attributes to the fragment shader (normals, texture coords, view direction)
+ * - Implements wind-based vertex animation for grass blades
+ * - Outputs coordinates for shadow mapping
  */
 export const vertexShaderSource = `
     precision mediump float;
@@ -79,12 +79,11 @@ export const vertexShaderSource = `
 `;
 
 /**
- * Fragment shader migliorato:
- * - Improved atmospheric lighting system
- * - Better shadow mapping with PCF
- * - Realistic material shading
- * - Time-based color transitions
- * - Optimized noise functions
+ * Fragment shader (main scene):
+ * - Handles per-fragment lighting and shading
+ * - Supports various material types: sky, ground, grass, gnomon, hour lines, clouds, light sphere
+ * - Uses shadow mapping with Percentage Closer Filtering (PCF)
+ * - Implements time-of-day-based color shifts, atmospheric lighting and fake subsurface scattering
  */
 export const fragmentShaderSource = `
     precision mediump float;
@@ -205,7 +204,7 @@ export const fragmentShaderSource = `
     vec3 lightDir = normalize(-u_lightDirection);
     float bias = 0.001 / max(dot(normal, lightDir), 0.1);
     
-    vec2 texelSize = vec2(1.0 / 2048.0, 1.0 / 2048.0);
+    vec2 texelSize = vec2(1.0 / 4096.0, 1.0 / 4096.0);
     float shadow = 0.0;
     
     // Pattern ottimizzato 3x3 con soft comparison
@@ -335,14 +334,15 @@ export const fragmentShaderSource = `
             vec2 terrainCoord = v_worldPos.xz * 0.3;
             float baseNoise = fbm(v_worldPos.xz * 0.5 + u_realTime * 0.02);
             // Multi-octave terrain texture
-            float terrainNoise = fbm(terrainCoord * 4.0) * 0.3;
-            terrainNoise += fbm(terrainCoord * 16.0) * 0.1;
+            float terrainNoise = fbm(terrainCoord * 4.0) * 0.1;
+            terrainNoise += fbm(terrainCoord * 16.0) * 0.05;
             
             vec3 dirtColor = vec3(0.4, 0.3, 0.2);
-            vec3 darkDirt = vec3(0.2, 0.15, 0.1);
+            vec3 darkDirt = vec3(0.0, 0.0, 0.0);
             vec3 terrainColor = mix(darkDirt, dirtColor, terrainNoise + 0.5);
-            terrainColor *= 0.6 + 0.4 * baseNoise;
+            terrainColor *= 0.8 + 0.9 * baseNoise;
             float shadow = calculateShadowPCF();
+            
             vec3 finalColor = calculateLighting(terrainColor, normal, v_worldPos) * shadow;
             
             gl_FragColor = vec4(finalColor, 1.0);
@@ -413,69 +413,86 @@ export const fragmentShaderSource = `
         }
         
         // GNOMON (Bronze material)
-          if (u_isGnomon > 0.5) {
-    // Base bronzo scuro e riflessi
-    vec3 bronzeBase = vec3(0.25, 0.18, 0.09);
-    vec3 bronzeHighlight = vec3(0.5, 0.35, 0.2);
+          // GNOMON (Bronze material)
+        if (u_isGnomon > 0.5) {
 
-    // Noise per variazione superficiale
-    float roughPattern = fbm(v_worldPos.xz * 3.0 + v_worldPos.yz * 2.0);
-    vec3 bronzeColor = mix(bronzeBase, bronzeHighlight, roughPattern * 0.6);
+            // Base bronze color (dark metal tone)
+            vec3 bronzeBase = vec3(0.1, 0.06, 0.02);
 
-    // ===== LINEE INCISIONE (tipo decorazione o giunzione saldata) =====
-    float freq = 0.12;        // distanza tra "blocchi"
-    float width = 0.006;      // spessore linea
-    float hLine = smoothstep(freq - width, freq, fract(v_worldPos.y / freq));
-    hLine *= smoothstep(0.0, width, 1.0 - fract(v_worldPos.y / freq));
+            // Highlight color for surface variation (fake metallic luster)
+            vec3 bronzeHighlight = vec3(0.2, 0.9, 0.3);
 
-    float vLine = smoothstep(freq - width, freq, fract(v_worldPos.x / freq));
-    vLine *= smoothstep(0.0, width, 1.0 - fract(v_worldPos.x / freq));
+            // Procedural noise pattern to simulate surface roughness or oxidation
+            float roughPattern = fbm(v_worldPos.xz * 3.0 + v_worldPos.yz * 2.0);
+            roughPattern = smoothstep(0.3, 0.8, roughPattern);
 
-    float grid = min(hLine, vLine);  
+            // Blend between base and highlight color based on roughness pattern
+            vec3 bronzeColor = mix(bronzeBase, bronzeHighlight, roughPattern * 0.6);
 
-    vec3 grooveColor = vec3(1.0); // colore delle incisioni (bianco o chiaro)
-    bronzeColor = mix(grooveColor, bronzeColor, grid);
-    // ====================================================================
+            // ===== ENGRAVING LINES (simulate weld seams or decorative etching) =====
 
-    // Normali e luce
-    vec3 N = normalize(v_normal);
-    vec3 L = normalize(-u_lightDirection);
-    vec3 V = normalize(v_viewDirection);
-    vec3 R = reflect(-L, N);
+            float freq = 0.12;   // spacing between lines
+            float width = 0.006; // thickness of each line
 
-    float NdotL = max(dot(N, L), 0.0);
-    float spec = pow(max(dot(V, R), 0.0), 24.0);
+            // Horizontal line pattern (Y axis)
+            float hLine = smoothstep(freq - width, freq, fract(v_worldPos.y / freq));
+            hLine *= smoothstep(0.0, width, 1.0 - fract(v_worldPos.y / freq));
 
-    vec3 specular = bronzeHighlight * spec * 0.5;
-    vec3 ambient = bronzeBase * getAmbientColor(u_timeOfDay) * 0.4;
+            // Vertical line pattern (X axis)
+            float vLine = smoothstep(freq - width, freq, fract(v_worldPos.x / freq));
+            vLine *= smoothstep(0.0, width, 1.0 - fract(v_worldPos.x / freq));
 
-    float shadow = calculateShadowPCF();
-    shadow = mix(0.3, 1.0, shadow);
-    
-    vec3 finalColor = (ambient + bronzeColor * NdotL + specular) ;
-    finalColor = clamp(finalColor, 0.0, 0.95);
+            // Combine horizontal and vertical lines to form a grid
+            float grid = min(hLine, vLine);
 
-    gl_FragColor = vec4(finalColor, 1.0);
-    return;
-}
+            // Color of the grooves (e.g. lighter to simulate carved metal)
+            vec3 grooveColor = vec3(1.0);
+
+            // Mix grooves with bronze surface
+            bronzeColor = mix(grooveColor, bronzeColor, grid);
+
+            // ===== LIGHTING CALCULATIONS =====
+
+            vec3 N = normalize(v_normal);                  // Surface normal
+            vec3 L = normalize(-u_lightDirection);         // Direction toward light
+            vec3 V = normalize(v_viewDirection);           // Direction toward camera
+            vec3 R = reflect(-L, N);                       // Reflection vector for specular
+
+            float NdotL = max(dot(N, L), 0.0);             // Diffuse term
+            float spec = pow(max(dot(V, R), 0.0), 24.0);   // Specular term (shininess)
+
+            vec3 specular = bronzeHighlight * spec * 0.5;  // Specular color scaled
+            vec3 ambient = bronzeBase * getAmbientColor(u_timeOfDay) * 0.4; // Ambient light
+
+            float shadow = calculateShadowPCF(); // Shadow attenuation factor (PCF)
+
+            // Final shading with ambient, diffuse and specular, multiplied by shadow
+            vec3 finalColor = (ambient + bronzeColor * NdotL + specular);
+            finalColor = clamp(finalColor, 0.0, 0.95); // Optional safety clamp
+
+            gl_FragColor = vec4(finalColor, 1.0); // Output final color (opaque)
+            return;
+            }
+
 
 
         
         // HOUR LINES
         if (u_isHourLine > 0.5) {
-    vec3 lineColor = vec3(0.95, 0.95, 0.9);     // Slightly warmer white
+            vec3 lineColor = vec3(0.95, 0.95, 0.9);     // Slightly warmer white
     
-    // Add subtle time-based tinting
-    if (u_timeOfDay < 0.25 || u_timeOfDay > 0.75) {
-        lineColor *= vec3(1.0, 0.9, 0.8);       // Warmer during dawn/dusk
+            // Add subtle time-based tinting
+        if (u_timeOfDay < 0.25 || u_timeOfDay > 0.75) {
+            lineColor *= vec3(1.0, 0.9, 0.8);       // Warmer during dawn/dusk
+        }
+    
+        float shadow = calculateShadowPCF();
+        shadow=mix(0.2, 1.0, shadow);
+        vec3 finalColor = calculateLighting(lineColor, normal, v_worldPos) * shadow;
+    
+        gl_FragColor = vec4(finalColor, 1.0);
+        return;
     }
-    
-    float shadow = calculateShadowPCF();
-    vec3 finalColor = calculateLighting(lineColor, normal, v_worldPos) * shadow;
-    
-    gl_FragColor = vec4(finalColor, 1.0);
-    return;
-}
         
         // DEFAULT MATERIAL
         float shadow = calculateShadowPCF();
@@ -485,41 +502,56 @@ export const fragmentShaderSource = `
 `;
 
 /**
- * Shadow mapping shaders (unchanged - already optimal)
+ * Vertex shader for shadow mapping:
+ * - Transforms vertex position into light's projection space
+ * - Animates grass blades based on wind time if `u_isGrass` is enabled
  */
 export const shadowVertexShaderSource = `
     precision mediump float;
 
-// Attributi
-attribute vec3 a_position;
+    // Vertex attributes
+    attribute vec3 a_position;
 
-// Uniform per proiezione
-uniform mat4 u_lightViewProjectionMatrix;
+    // Uniform matrix for transforming world coordinates to light's clip space
+    uniform mat4 u_lightViewProjectionMatrix;
 
-// Uniform per erba animata
-uniform float u_isGrass;
-uniform float u_windTime;
+    // Grass animation controls
+    uniform float u_isGrass;    // Flag indicating whether current object is grass
+    uniform float u_windTime;   // Global time value for wind animation
 
-void main() {
-    vec3 pos = a_position;
+    void main() {
+        vec3 pos = a_position;
 
-    // Applica animazione vento solo se è erba
-    if (u_isGrass > 0.5) {
-        float heightFactor = (pos.y + 1.0) * 0.5; // Range 0–1
-        float windStrength = heightFactor * heightFactor;
+        // Apply wind animation only to grass
+        if (u_isGrass > 0.5) {
+            // Normalize the height of the vertex to [0, 1]
+            float heightFactor = (pos.y + 1.0) * 0.5;
 
-        float windX = sin(u_windTime + pos.x * 0.3 + pos.z * 0.2) * 0.15;
-        float windZ = cos(u_windTime * 0.8 + pos.x * 0.2 + pos.z * 0.3) * 0.1;
-        float randomOffset = sin(pos.x * 12.34 + pos.z * 56.78) * 0.02;
+            // Wind effect increases with height (top of blade bends more)
+            float windStrength = heightFactor * heightFactor;
 
-        pos.x += (windX + randomOffset) * windStrength;
-        pos.z += (windZ + randomOffset * 0.5) * windStrength;
+            // Simulate wind displacement using sine and cosine waves
+            float windX = sin(u_windTime + pos.x * 0.3 + pos.z * 0.2) * 0.15;
+            float windZ = cos(u_windTime * 0.8 + pos.x * 0.2 + pos.z * 0.3) * 0.1;
+
+            // Add some randomness per blade using a fixed function
+            float randomOffset = sin(pos.x * 12.34 + pos.z * 56.78) * 0.02;
+
+            // Apply horizontal displacement to simulate bending
+            pos.x += (windX + randomOffset) * windStrength;
+            pos.z += (windZ + randomOffset * 0.5) * windStrength;
+        }
+
+        // Transform the vertex to shadow map space (light's POV)
+        gl_Position = u_lightViewProjectionMatrix * vec4(pos, 1.0);
     }
-
-    gl_Position = u_lightViewProjectionMatrix * vec4(pos, 1.0);
-}
 `;
 
+/**
+ * Fragment shader for shadow mapping:
+ * - Outputs only depth information encoded in red channel
+ * - Used to compare depths during shadow calculation
+ */
 export const shadowFragmentShaderSource = `
     precision mediump float;
     
@@ -529,7 +561,9 @@ export const shadowFragmentShaderSource = `
 `;
 
 /**
- * Sky dome shaders migliorati
+ * Fragment shader for shadow mapping:
+ * - Outputs only depth information encoded in red channel
+ * - Used to compare depths during shadow calculation
  */
 export const skyVertexShaderSource = `
     precision mediump float;
@@ -550,96 +584,113 @@ export const skyVertexShaderSource = `
         gl_Position = u_modelViewProjectionMatrix * vec4(a_position, 1.0);
     }
 `;
-
+/**
+ * Fragment shader for sky dome:
+ * - Computes sky color based on time of day and viewing angle
+ * - Renders the sun with halo and disc effects
+ * - Adds dynamic procedural clouds with noise and FBM
+ */
 export const skyFragmentShaderSource = `
     precision mediump float;
-    
+
+    // Inputs from the vertex shader
     varying vec3 v_position;
     varying vec3 v_worldPos;
     varying vec3 v_viewDirection;
-    
-    uniform vec3 u_lightDirection;
-    uniform float u_time;
-    uniform float u_timeOfDay;
-    
-    // Optimized noise functions
+
+    // Uniforms for lighting and time
+    uniform vec3 u_lightDirection; // Direction of the sun
+    uniform float u_time;          // Time (used for cloud movement)
+    uniform float u_timeOfDay;     // Normalized time of day [0.0–1.0]
+
+    // === Utility noise functions ===
+
+    // Hash function used for pseudo-random generation
     float hash21(vec2 p) {
         p = fract(p * vec2(234.34, 435.345));
         p += dot(p, p + 34.23);
         return fract(p.x * p.y);
     }
-    
+
+    // 2D value noise
     float noise(vec2 p) {
         vec2 i = floor(p);
         vec2 f = fract(p);
         f = f * f * (3.0 - 2.0 * f);
-        
+
         return mix(
             mix(hash21(i + vec2(0,0)), hash21(i + vec2(1,0)), f.x),
             mix(hash21(i + vec2(0,1)), hash21(i + vec2(1,1)), f.x),
             f.y
         );
     }
-    
+
+    // Fractal Brownian Motion: layered noise for more natural patterns
     float fbm(vec2 p, int octaves) {
         float value = 0.0;
         float amplitude = 0.5;
-        
+
         for (int i = 0; i < 6; i++) {
             if (i >= octaves) break;
             value += amplitude * noise(p);
             p *= 2.0;
             amplitude *= 0.5;
         }
-        
+
         return value;
     }
-    
+
+    // Computes a vertical gradient based on elevation and time of day
     vec3 getSkyGradient(float elevation, float timeOfDay) {
         vec3 zenith, horizon;
-        
-        // Time-based sky colors
+
+        // Adjust sky colors based on time of day
         if (timeOfDay < 0.2) {
+            // Night
             zenith = vec3(0.02, 0.03, 0.15);
             horizon = vec3(0.1, 0.1, 0.2);
         } else if (timeOfDay < 0.3) {
+            // Dawn
             zenith = vec3(0.6, 0.4, 0.8);
             horizon = vec3(1.0, 0.6, 0.3);
         } else if (timeOfDay < 0.7) {
+            // Daytime
             zenith = vec3(0.3, 0.6, 1.0);
             horizon = vec3(0.7, 0.9, 1.0);
         } else if (timeOfDay < 0.8) {
+            // Dusk
             zenith = vec3(0.8, 0.4, 0.6);
             horizon = vec3(1.0, 0.5, 0.2);
         } else {
+            // Night again
             zenith = vec3(0.02, 0.03, 0.15);
             horizon = vec3(0.1, 0.1, 0.2);
         }
-        
+
         float t = pow(max(0.0, elevation), 0.7);
-        return mix(horizon, zenith, t);
+        return mix(horizon, zenith, t); // Interpolate based on elevation
     }
-    
+
     void main() {
-        vec3 viewDir = normalize(v_viewDirection);
-        vec3 lightDir = normalize(-u_lightDirection);
-        
-        float elevation = max(0.0, viewDir.y);
-        vec3 skyColor = getSkyGradient(elevation, u_timeOfDay);
-        
-        // Enhanced sun rendering
-        float sunDistance = length(viewDir - lightDir);
-        
+        vec3 viewDir = normalize(v_viewDirection);     // Direction camera is facing
+        vec3 lightDir = normalize(-u_lightDirection);  // Sunlight direction (reversed)
+
+        float elevation = max(0.0, viewDir.y);         // Vertical component of view direction
+        vec3 skyColor = getSkyGradient(elevation, u_timeOfDay); // Initial gradient background
+
+        // === SUN RENDERING ===
+        float sunDistance = length(viewDir - lightDir); // Angular distance between sun and view
+
         if (lightDir.y > -0.1) {
-            // Sun disc
+            // Render sun disc
             if (sunDistance < 0.025) {
-                vec3 sunColor = vec3(1.0, 0.9, 0.7);
+                vec3 sunColor = vec3(1.0, 0.9, 0.7); // Default bright sun
                 if (u_timeOfDay < 0.3 || u_timeOfDay > 0.7) {
-                    sunColor = vec3(1.0, 0.6, 0.3);
+                    sunColor = vec3(1.0, 0.6, 0.3); // Warmer color at dawn/dusk
                 }
-                
+
                 float sunIntensity = 1.0 - smoothstep(0.0, 0.025, sunDistance);
-                skyColor = mix(skyColor, sunColor * 3.0, sunIntensity);
+                skyColor = mix(skyColor, sunColor * 3.0, sunIntensity); // Blend sun into sky
             }
             // Sun halo
             else if (sunDistance < 0.15) {
@@ -648,34 +699,38 @@ export const skyFragmentShaderSource = `
                 skyColor = mix(skyColor, haloColor, haloIntensity);
             }
         }
-        
-        // Improved cloud system
+
+        // === CLOUDS ===
         if (elevation > 0.05) {
+            // Project direction into 2D space for cloud sampling
             vec2 cloudUV = vec2(
-                atan(viewDir.x, viewDir.z) / 6.28318,
-                acos(elevation) / 3.14159
+                atan(viewDir.x, viewDir.z) / 6.28318,   // Azimuth (normalized)
+                acos(elevation) / 3.14159               // Altitude (normalized)
             ) * 3.0;
-            
+
+            // Move clouds over time
             cloudUV += u_time * 0.002;
-            
-            float cloudDensity = fbm(cloudUV, 4);
-            cloudDensity = smoothstep(0.35, 0.75, cloudDensity);
-            
-            // Cloud colors based on time
+
+            float cloudDensity = fbm(cloudUV, 4); // Generate FBM noise
+            cloudDensity = smoothstep(0.35, 0.75, cloudDensity); // Threshold to enhance contrast
+
+            // Select cloud color based on time of day
             vec3 cloudColor;
             if (u_timeOfDay < 0.3 || u_timeOfDay > 0.7) {
-                cloudColor = vec3(0.8, 0.4, 0.3); // Dawn/dusk
+                cloudColor = vec3(0.8, 0.4, 0.3); // Warmer clouds for dawn/dusk
             } else {
-                cloudColor = vec3(0.95, 0.95, 1.0); // Day
+                cloudColor = vec3(0.95, 0.95, 1.0); // Bright clouds during the day
             }
-            
-            // Cloud lighting
+
+            // Clouds are brighter when facing the sun
             float cloudLight = max(0.3, dot(viewDir, lightDir));
             cloudColor *= cloudLight;
-            
+
+            // Mix cloud color into the sky
             skyColor = mix(skyColor, cloudColor, cloudDensity * 0.8);
         }
-        
+
+        // Final output color
         gl_FragColor = vec4(skyColor, 1.0);
     }
 `;

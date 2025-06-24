@@ -108,7 +108,7 @@ export function setupWebGLState(gl) {
  * }} An object containing the framebuffer, shadow texture, and compiled shader program for shadow rendering.
  */
 export function initShadowMap(gl) {
-    const shadowMapSize = 2048; // resolution setting
+    const shadowMapSize = 4096; // resolution setting
     
     // Create shadow map texture 
     const shadowTexture = gl.createTexture();
@@ -142,7 +142,11 @@ export function initShadowMap(gl) {
     return { shadowFramebuffer, shadowTexture, shadowProgram };
 }
 /**
- * Crea i shader per il cielo
+ * Compiles and links the vertex and fragment shaders for the sky dome.
+ * @param {WebGLRenderingContext} gl - The WebGL context.
+ * @param {string} skyVertexShaderSource - GLSL vertex shader source for sky.
+ * @param {string} skyFragmentShaderSource - GLSL fragment shader source for sky.
+ * @returns {WebGLProgram|null} The compiled and linked sky shader program.
  */
 export function createSkyProgram(gl, skyVertexShaderSource, skyFragmentShaderSource) {
     const skyVertexShader = createShader(gl, gl.VERTEX_SHADER, skyVertexShaderSource);
@@ -150,8 +154,14 @@ export function createSkyProgram(gl, skyVertexShaderSource, skyFragmentShaderSou
     return createProgram(gl, skyVertexShader, skyFragmentShader);
 }
 
+
 /**
- * Crea la geometria per la cupola del cielo
+ * Generates a hemisphere geometry representing the sky dome.
+ * @param {WebGLRenderingContext} gl - The WebGL context.
+ * @returns {{
+ *   vertices: Float32Array,
+ *   indices: Uint16Array
+ * }} Geometry buffers for rendering the sky dome.
  */
 export function createSkyDome(gl) {
     const vertices = [];
@@ -161,9 +171,9 @@ export function createSkyDome(gl) {
     const segments = 32;
     const rings = 16;
     
-    // Genera vertici
+    // Generate vertices
     for (let ring = 0; ring <= rings; ring++) {
-        const phi = (ring / rings) * Math.PI * 0.5; // Solo metà superiore
+        const phi = (ring / rings) * Math.PI * 0.5; // upper hemisphere only
         for (let seg = 0; seg <= segments; seg++) {
             const theta = (seg / segments) * Math.PI * 2;
             
@@ -175,7 +185,7 @@ export function createSkyDome(gl) {
         }
     }
     
-    // Genera indici
+    // Generate indices
     for (let ring = 0; ring < rings; ring++) {
         for (let seg = 0; seg < segments; seg++) {
             const current = ring * (segments + 1) + seg;

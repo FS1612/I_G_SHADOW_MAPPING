@@ -51,12 +51,11 @@ export class Renderer {
      * @param {boolean} [isGround=false] - True if drawing the ground plane.
      * @param {boolean} [isGnomon=false] - True if drawing the gnomon.
      * @param {boolean} [isHourLine=false] - True if drawing hour line geometry.
+     * 
      */
     drawObject(vertexBuffer, indexBuffer, indexCount, color, isGround = false, isGnomon = false, isHourLine = false, isCloud = false)
  {
-    if (this.opacityLocation && typeof opacity === 'number') {
-    gl.uniform1f(this.opacityLocation, opacity);
-}
+
         const gl = this.gl;
         gl.uniform1f(this.isCloudLocation, isCloud ? 1.0 : 0.0);
         gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
@@ -114,6 +113,8 @@ export class Renderer {
  * @param {WebGLBuffer} vertexBuffer - The buffer containing interleaved vertex data.
  * @param {WebGLBuffer} indexBuffer - The buffer containing indices.
  * @param {number} indexCount - The number of indices to render.
+ * @param {boolean} [isGrass=false] - Whether the object is grass (for wind effect).
+ * @param {Float32Array|null} [modelMatrix=null] - Optional model matrix for shadow pass.
  */
     drawShadowObject(vertexBuffer, indexBuffer, indexCount, isGrass = false, modelMatrix = null) {
     const gl = this.gl;
@@ -125,7 +126,7 @@ export class Renderer {
     gl.uniform1f(gl.getUniformLocation(this.shadowProgram, "u_isGrass"), isGrass ? 1.0 : 0.0);
     gl.uniform1f(gl.getUniformLocation(this.shadowProgram, "u_windTime"), windTime);
 
-    // AGGIUNTA IMPORTANTE:
+    
     if (modelMatrix) {
         const modelLoc = gl.getUniformLocation(this.shadowProgram, "u_modelMatrix");
         if (modelLoc) {
