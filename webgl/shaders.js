@@ -412,69 +412,117 @@ export const fragmentShaderSource = `
             return;
         }
         
-        // GNOMON (Bronze material)
-          // GNOMON (Bronze material)
+
+        
+        // GNOMON 
         if (u_isGnomon > 0.5) {
 
-            // Base bronze color (dark metal tone)
-            vec3 bronzeBase = vec3(0.1, 0.06, 0.02);
+            vec3 bronzeBase = vec3(0.72, 0.45, 0.2);      // normal bronze
+            vec3 bronzePolished = vec3(0.85, 0.65, 0.4);  // polished bronze
+            vec3 bronzeOxidized = vec3(0.6, 0.35, 0.25);  // oxidation
+            vec3 bronzeDark = vec3(0.3, 0.5, 0.6);        // cavity
+            vec3 specularColor = vec3(0.5, 0.95, 0.8);    // solar ray reflection effects
 
-            // Highlight color for surface variation (fake metallic luster)
-            vec3 bronzeHighlight = vec3(0.2, 0.9, 0.3);
+            // Multi-layer noise 
+            vec2 surfaceCoord = v_worldPos.xz * 3.0 + vec2(v_worldPos.y * 1.5);
+            vec2 detailCoord = v_worldPos.xz * 12.0 + vec2(v_worldPos.y * 8.0);
+            vec2 microCoord = v_worldPos.xz * 25.0;
 
-            // Procedural noise pattern to simulate surface roughness or oxidation
-            float roughPattern = fbm(v_worldPos.xz * 3.0 + v_worldPos.yz * 2.0);
-            roughPattern = smoothstep(0.3, 0.8, roughPattern);
+    
+            float oxidationPattern = fbm(surfaceCoord);
+            oxidationPattern = smoothstep(0.35, 0.75, oxidationPattern);
 
-            // Blend between base and highlight color based on roughness pattern
-            vec3 bronzeColor = mix(bronzeBase, bronzeHighlight, roughPattern * 0.6);
+            // Surface details (scratches, wear)
+            float surfaceDetail = fbm(detailCoord);
+            surfaceDetail = smoothstep(0.4, 0.6, surfaceDetail);
 
-            // ===== ENGRAVING LINES (simulate weld seams or decorative etching) =====
+            // Micro-variations 
+            float microTexture = fbm(microCoord);
+            microTexture = smoothstep(0.45, 0.55, microTexture);
 
-            float freq = 0.12;   // spacing between lines
-            float width = 0.006; // thickness of each line
+            // Wear simulation based on orientation (exposed parts more polished)
+            vec3 N = normalize(v_normal);
+            float exposureFactor = max(0.0, N.y); // Horizontal surfaces more exposed
+            exposureFactor = pow(exposureFactor, 1.5);
 
-            // Horizontal line pattern (Y axis)
-            float hLine = smoothstep(freq - width, freq, fract(v_worldPos.y / freq));
-            hLine *= smoothstep(0.0, width, 1.0 - fract(v_worldPos.y / freq));
+            // Layered base color construction
+            vec3 bronzeColor = bronzeBase;
+    
+            // Add oxidation 
+            float oxidationMask = oxidationPattern * (1.0 - exposureFactor * 0.7);
+            bronzeColor = mix(bronzeColor, bronzeOxidized, oxidationMask * 0.6);
+    
+            // Polished areas due to exposure and wear
+            float polishMask = exposureFactor * surfaceDetail;
+            bronzeColor = mix(bronzeColor, bronzePolished, polishMask * 0.8);
+    
+            // Darkening in recesses
+            float cavityMask = (1.0 - exposureFactor) * (1.0 - microTexture);
+            bronzeColor = mix(bronzeColor, bronzeDark, cavityMask * 0.4);
 
-            // Vertical line pattern (X axis)
-            float vLine = smoothstep(freq - width, freq, fract(v_worldPos.x / freq));
-            vLine *= smoothstep(0.0, width, 1.0 - fract(v_worldPos.x / freq));
+            // =====LIGHTING =====
+            vec3 L = normalize(-u_lightDirection);
+            vec3 V = normalize(v_viewDirection);
+            vec3 R = reflect(-L, N);
+            vec3 H = normalize(L + V); // Half vector for Blinn-Phong
 
-            // Combine horizontal and vertical lines to form a grid
-            float grid = min(hLine, vLine);
+            float NdotL = max(dot(N, L), 0.0);
+            float NdotV = max(dot(N, V), 0.0);
+            float NdotH = max(dot(N, H), 0.0);
 
-            // Color of the grooves (e.g. lighter to simulate carved metal)
-            vec3 grooveColor = vec3(1.0);
+            // Variable roughness based on oxidation and details
+            float roughness = 0.15 + oxidationMask * 0.4 - polishMask * 0.3;
+            roughness = clamp(roughness, 0.05, 0.8);
 
-            // Mix grooves with bronze surface
-            bronzeColor = mix(grooveColor, bronzeColor, grid);
+            // Specular with roughness control
+            float shininess = mix(128.0, 8.0, roughness);
+            float spec = pow(NdotH, shininess);
 
-            // ===== LIGHTING CALCULATIONS =====
+            // More accurate Fresnel (Schlick approximation)
+            float F0 = 0.04; // Base reflectivity for metals
+            float fresnel = F0 + (1.0 - F0) * pow(1.0 - NdotV, 5.0);
 
-            vec3 N = normalize(v_normal);                  // Surface normal
-            vec3 L = normalize(-u_lightDirection);         // Direction toward light
-            vec3 V = normalize(v_viewDirection);           // Direction toward camera
-            vec3 R = reflect(-L, N);                       // Reflection vector for specular
+            // Rim lighting to give volume
+            float rimLight = pow(1.0 - NdotV, 3.0) * max(0.0, dot(N, L));
 
-            float NdotL = max(dot(N, L), 0.0);             // Diffuse term
-            float spec = pow(max(dot(V, R), 0.0), 24.0);   // Specular term (shininess)
+            // Lighting components
+            vec3 ambient = bronzeColor * getAmbientColor(u_timeOfDay) * 0.4;
+            vec3 diffuse = bronzeColor * NdotL * 0.8;
+            vec3 specular = specularColor * spec * fresnel * (1.0 - roughness);
+            vec3 rim = specularColor * rimLight * 0.3;
 
-            vec3 specular = bronzeHighlight * spec * 0.5;  // Specular color scaled
-            vec3 ambient = bronzeBase * getAmbientColor(u_timeOfDay) * 0.4; // Ambient light
-
-            float shadow = calculateShadowPCF(); // Shadow attenuation factor (PCF)
-
-            // Final shading with ambient, diffuse and specular, multiplied by shadow
-            vec3 finalColor = (ambient + bronzeColor * NdotL + specular);
-            finalColor = clamp(finalColor, 0.0, 0.95); // Optional safety clamp
-
-            gl_FragColor = vec4(finalColor, 1.0); // Output final color (opaque)
-            return;
+            // Point light contribution
+            vec3 pointLightDir = normalize(u_lightPosition - v_worldPos);
+            float pointDistance = length(u_lightPosition - v_worldPos);
+    
+            if (pointDistance <= u_lightRadius) {
+                float pointAttenuation = u_lightIntensity / (1.0 + 0.1 * pointDistance + 0.01 * pointDistance * pointDistance);
+                float pointNdotL = max(0.0, dot(N, pointLightDir));
+        
+                // Warm point light contribution
+                diffuse += bronzeColor * vec3(1.0, 0.85, 0.6) * pointNdotL * pointAttenuation * 0.5;
+        
+                // Point light specular
+                vec3 pointReflect = reflect(-pointLightDir, N);
+                float pointSpec = pow(max(dot(V, pointReflect), 0.0), shininess * 0.5);
+                specular += vec3(1.0, 0.9, 0.7) * pointSpec * pointAttenuation * fresnel * 0.3;
             }
 
+            float shadow = calculateShadowPCF();
+    
+            // Final combination with improved tone mapping
+            vec3 finalColor = ambient + (diffuse + specular + rim) * shadow;
+    
+            // Subtle color grading for more convincing bronze
+            finalColor *= vec3(1.02, 0.98, 0.95); // Slight warm tint
+    
+            // Soft gamma correction
+            finalColor = pow(finalColor, vec3(1.0/2.1));
+            finalColor = clamp(finalColor, 0.0, 1.0);
 
+            gl_FragColor = vec4(finalColor, 1.0);
+            return;
+        }
 
         
         // HOUR LINES

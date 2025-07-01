@@ -286,18 +286,18 @@ export class SundialApp {
      */
     updateQualitySettings(lowQuality) {
         if (lowQuality && !this.isLowQualityLoaded) {
-                // Geometria a bassa qualità
-                this.geometries.plane = createPlane(12, 240);
+
+                this.geometries.plane = createPlane(12, 5);
                 this.buffers.planeVertex = createBuffer(this.gl, this.geometries.plane.vertices);
                 this.buffers.planeIndex = createIndexBuffer(this.gl, this.geometries.plane.indices);
                 
-                // Aggiorna i grass blades per bassa qualità (20 blades)
+         
                 this.geometries.grassBlades = scatterGrassField(200);
                 createGrassBladesBuffer.call(this);
                 
                 this.isLowQualityLoaded = true;
             } else if (!lowQuality && this.isLowQualityLoaded) {
-                // Geometria ad alta qualità
+
                 this.geometries.plane = createPlane(12, 240);
                 this.buffers.planeVertex = createBuffer(this.gl, this.geometries.plane.vertices);
                 this.buffers.planeIndex = createIndexBuffer(this.gl, this.geometries.plane.indices);
